@@ -1,10 +1,11 @@
 # Galaxy Tab S8 Ultra Wi-Fi (SM-X900 / gts8uwifi): bring-up
 
-Status, 2026-10-03: **first-boot framebuffer console, USB2 ACM root shell and
-UFS disk/partition discovery work on the attached SM-X900**. The corrected
-memory map supports a 512 MiB allocation/read-back check and unpacking and
-executing the postmarketOS ramdisk in RAM. A complete postmarketOS boot and
-native AMOLED takeover remain unfinished. USERDATA has not been flashed.
+Status, 2026-10-03: **framebuffer console, USB2 ACM root shell, UFS discovery
+and the real postmarketOS initramfs debug shell work on the attached SM-X900**.
+Both initramfs stages run in RAM; the on-screen debug keyboard renders. The
+corrected memory map also passed a 512 MiB allocation/read-back check. An
+installed rootfs, native AMOLED takeover and input remain unfinished. USERDATA
+has not been flashed.
 
 ## Hardware evidence
 
@@ -32,26 +33,50 @@ and firmware need their own live map; the excluded upper RAM remains untested.
 The DTS enables UFS, fixed USB2 peripheral mode and ABL's existing framebuffer.
 The 2960x1848 ARGB landscape framebuffer at `0xb8000000` produces readable
 uniLoader and Linux console output. Native MDSS/DSI, GPU, wireless, remote
-processors, input, pogo, audio and MAX77705 clients remain disabled.
+processors, input, pogo, audio and the MAX77705 charger/gauge remain disabled.
+The MFD and Type-C driver handle USB data routing in sink/device mode.
 Inherited dormant peripheral descriptions are preparation, not support claims.
 
-The working R11 image uses kernel package `7.2-r46`, device package `0.1-r1`
-and a small raw cpio diagnostic ramdisk. Its BOOT SHA-256 is
-`0b376245545da5b37b4a08b4be8bcd8a2518598f329d205fed3642d180c497b4`.
-Artifacts and runtime captures are in `root-build/gts8uwifi-debug-r11/`.
-The stable `root-build/gts8uwifi-debug/` copy currently contains that image.
+Kernel package `7.2-r51`, device package `0.1-r1` and uniLoader's console
+newline fix establish the current diagnostic stage. The image built directly
+from this checkout with the command below has BOOT SHA-256
+`121360005ac3f9ca4dd60459e89883ce8ba6976a482e816d7a3ef713fe8b6eee`;
+artifacts and its ACM capture are in `root-build/gts8uwifi-debug-r23-checkout/`.
+The older `root-build/gts8uwifi-debug/` image is the archived R11 baseline.
 
-The UDC reaches `configured` at `high-speed`; macOS enumerates the ACM device
-as `18d1:d001` and exposes an interactive root shell. USB host mode,
-SuperSpeed, USB networking and SSH have not been tested. The Linux shell
-reports `MemTotal=6473176 kB`, with no repeat external abort during the captured
-RAM checks. UFS enumeration does not establish filesystem operation.
+`RESTART2("download")` reaches Samsung Download Mode, confirmed by the
+tablet screen and Heimdall detection without pressing the volume keys. The
+[restart-reason evidence](../device-facts/gts8uwifi/reboot.md) explains the SDAM
+route and why the previous qcom-pon setting returned to Linux. There is no
+automatic Download Mode timeout in the diagnostic init.
 
-The full 11,802,461-byte postmarketOS ramdisk was transferred over ACM to RAM
-with a matching SHA-256, gzip-tested and unpacked; its BusyBox ran in a chroot.
-Direct boot with that compressed ramdisk previously produced a black screen.
-That early-boot failure is still unresolved despite successful runtime unpacking.
-The first-boot framebuffer does not depend on the native panel driver.
+The MAX77705 data switch is open after Download Mode on DYDC. Enabling its
+MFD and Type-C driver selects USB routing and establishes initial attachment
+without a cable replug. The UDC reaches `configured` at `high-speed`; macOS
+enumerates the ACM device as `18d1:d001` and exposes an interactive root shell.
+USB host mode, SuperSpeed, USB networking and SSH have not been tested. The
+Linux shell reports `MemTotal=6473176 kB`, with no repeat external abort during
+the captured RAM checks. UFS enumeration does not establish filesystem operation.
+
+The real postmarketOS initramfs (`3.12.3-r1`, 11,802,395 compressed bytes)
+reaches stage 2 and its debug shell with the same kernel package and console
+fix. macOS exposes `/dev/cu.usbmodempostmarketOS3`; its name differs from the
+minimal diagnostic gadget. The shell reports `configured` / `high-speed`,
+with only RAM/virtual filesystems mounted and no captured external abort.
+The on-screen keyboard is buffyboard; this proves rendering, not touch input.
+USB NCM and DHCP start on the tablet, but host networking remains unverified.
+This BOOT image has SHA-256
+`fb83a7aef2014fb87331549d417f772b43657eb9aba52444ab59aa192da0ad82`;
+logs are in `root-build/gts8uwifi-debug-r24-pmos-initramfs/`.
+
+Earlier black/corrupted screens were not sufficient evidence of a kernel or
+RAM fault. A USB capability-only change reproduced a black screen with Linux
+and USB still alive; the tested stock capability word restores visible text
+(see the USB evidence). Minimal ramdisk edits also showed sensitivity to
+loader layout. The diagnostic recipe retains the original 1,919,488-byte
+raw-cpio slot; the full compressed initramfs now boots despite its larger
+layout. The framebuffer still depends on ABL scanout rather than native
+panel takeover.
 
 ## Build and reproduce
 
@@ -71,9 +96,22 @@ With matching stock outer ramdisk at `root-build/stock-dydc/boot-unpacked/ramdis
 docker exec -u builder sm-x900-builder env \
   UNILOADER_REMOTE=/work/uniloader \
   DIAGNOSTIC_INIT=1 MINIMAL_INITRAMFS=1 RAW_INITRAMFS=1 \
-  USB_STATE_DIAGNOSTIC=1 EXTRA_CMDLINE='initcall_debug ignore_loglevel' \
+  USB_STATE_DIAGNOSTIC=1 UNILOADER_BUILD_DATE="2026-10-03 09:34:27" \
+  EXTRA_CMDLINE='initcall_debug ignore_loglevel' \
   bash /src/tools/container/build-gts8uwifi-debug.sh \
   /src /work/repo/pmb-work /out/gts8uwifi-debug-next
+```
+
+For the real initramfs debug shell, use the same builder without the diagnostic
+ramdisk switches:
+
+```sh
+docker exec -u builder sm-x900-builder env \
+  UNILOADER_REMOTE=/work/uniloader \
+  UNILOADER_BUILD_DATE="2026-10-03 09:34:27" \
+  EXTRA_CMDLINE='pmos.nosplash initcall_debug ignore_loglevel' \
+  bash /src/tools/container/build-gts8uwifi-debug.sh \
+  /src /work/repo/pmb-work /out/gts8uwifi-pmos-debug
 ```
 
 The script apply-checks the pinned patch stack, builds both uniLoader boards,
@@ -116,6 +154,9 @@ tested on this tablet. The X800 restore archive is not an X900 recovery image.
 
 ## Unresolved
 
-Resolve direct postmarketOS ramdisk boot, then enable native display, input,
-wireless and other hardware in separately validated stages. Generalize live
-ABL memory/reservation transfer before supporting other firmware or RAM sizes.
+Continue BOOT-only tests with native AMOLED takeover and the Goodix GT6936
+touchscreen, using the RAM-based postmarketOS debug shell. Keep charger,
+wireless and other peripherals as separate stages. Installed rootfs work is
+deferred; the on-screen keyboard currently has no validated touch input.
+Generalize live ABL memory/reservation transfer before supporting other
+firmware or RAM sizes.
