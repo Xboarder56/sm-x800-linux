@@ -1924,16 +1924,22 @@
  * Volume up is the gpio-keys line on pm8350 gpio6 declared above.
  */
 /*
- * Software route into Samsung download (Odin) mode: ABL checks the PON
- * SOFT_RB_SPARE restart-reason at boot, and the downstream kernel's
- * `reboot download` writes 0x15 there (sec_qc_rbcmd_command.c,
- * PON_RESTART_REASON_DOWNLOAD). Mainline's qcom-pon driver provides the
- * same write via the reboot-mode framework with the same bit shift, so
- * this one property makes `reboot <arg>=download` (RESTART2 syscall)
- * land the device in download mode — no volume-key dance. Userspace
- * helper: reboot-download (busybox reboot cannot pass the argument).
+ * Software route into Samsung download (Odin) mode: the downstream
+ * `reboot download` command selects 0x15 (sec_qc_rbcmd_command.c,
+ * PON_RESTART_REASON_DOWNLOAD). On this PMK8350 generation, Samsung's
+ * sec_qc_qcom_reboot_reason driver writes that value through an nvmem
+ * cell, not the legacy PON SOFT_RB_SPARE register used by qcom-pon.
+ * The legacy route advertised "download" but rebooted X900 into Linux.
+ *
+ * DYDC's restart_reason cell is SDAM2 at 0x7100 + 0x48, bits <1 7>.
+ * pmk8350.dtsi already describes that cell and the nvmem reboot-mode
+ * consumer. Add Samsung's download value there; nvmem handles the bit
+ * shift. The SDAM provider and consumer must be built into a tiny debug
+ * kernel rather than relying on modules absent from the ramdisk.
+ * Userspace helper: reboot-download (busybox reboot cannot pass the
+ * argument required by the RESTART2 syscall).
  */
-&pmk8350_pon {
+&{/reboot-mode} {
 	mode-download = <0x15>;
 };
 
