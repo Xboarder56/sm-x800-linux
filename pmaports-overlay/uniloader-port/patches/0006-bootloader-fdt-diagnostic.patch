@@ -1,0 +1,317 @@
+From: SM-X900 bring-up workbench
+Subject: [PATCH] boot: optionally display Samsung ABL's live memory map
+
+The SM-X900 tiny diagnostic init reaches userspace, then takes a synchronous
+external abort in clear_page. The sibling-derived memory banks pass a static
+firmware reservation audit, but Samsung ABL patches its runtime FDT and the
+ordinary Android shell cannot read it. Preserve the incoming arm64 x0 tree
+before relocation, display its memory banks and any reservation still exposed
+by the compiled tree, and halt before Linux can allocate the disputed pages.
+
+This is an opt-in bring-up aid, disabled in both normal board defconfigs.
+DTB_ENTRY temporarily serves as a 2 MiB scratch destination; the diagnostic
+image builder checks it against all payload and loader ranges. It does not
+print chosen/bootargs or device identifiers. This patch is not an upstream
+support claim and should be removed or generalized before submission.
+
+diff --git a/Kconfig b/Kconfig
+index 3c2f3a5..793ceba 100644
+--- a/Kconfig
++++ b/Kconfig
+@@ -99,6 +99,18 @@ menu "Building options"
+ 		  Path to a NUL-terminated string, which is going to get
+ 		  embedded to uniLoader
+ 
++	config BOOTLOADER_FDT_DIAGNOSTIC
++		bool "Capture Samsung ABL's memory map and halt"
++		depends on SAMSUNG_GTS8UWIFI && LIBFDT && DTB_RELOCATE && POSITION_INDEPENDENT
++		default n
++		help
++		  SM-X900 bring-up diagnostic only. Before relocating uniLoader,
++		  copy the incoming arm64 x0 FDT (up to 2 MiB) to DTB_ENTRY.
++		  That scratch range must be writable, disjoint from uniLoader,
++		  and large enough for the bootloader FDT. Print the live memory
++		  banks and reservations our compiled DT would expose, then halt
++		  without loading Linux. Never enable in a normal boot image.
++
+ endmenu
+ 
+ source "drivers/Kconfig"
+diff --git a/arch/aarch64/reloc.S b/arch/aarch64/reloc.S
+index b6fb485..37ad946 100644
+--- a/arch/aarch64/reloc.S
++++ b/arch/aarch64/reloc.S
+@@ -26,6 +26,37 @@ ENTRY_ALIAS(_rel_stack_size)
+ 	.quad _reloc_size
+ 
+ ENTRY_ALIAS( _reloc_entry)
++#ifdef CONFIG_BOOTLOADER_FDT_DIAGNOSTIC
++	/* x0 is the original FDT. Preserve it before image relocation can
++	 * overwrite ABL's source buffer; no stack or C runtime exists yet.
++	 */
++	cbz	x0, 3f
++	tst	x0, #7
++	b.ne	2f
++	ldr	w7, [x0]
++	ldr	w8, =0xedfe0dd0 /* FDT_MAGIC, little-endian load */
++	cmp	w7, w8
++	b.ne	2f
++	ldr	w7, [x0, #4]
++	rev	w7, w7 /* big-endian totalsize */
++	cmp	w7, #40
++	b.lo	2f
++	ldr	w8, =0x200000
++	cmp	w7, w8
++	b.hi	2f
++	ldr	x8, =CONFIG_DTB_ENTRY
++	mov	x9, x0
++	mov	x0, x8
++1:
++	ldrb	w10, [x9], #1
++	strb	w10, [x8], #1
++	subs	w7, w7, #1
++	b.ne	1b
++	b	3f
++2:
++	mov	x0, xzr
++3:
++#endif
+ 	adr	x4, _start
+ 	ldr	x5, _rel_stack_base
+ 	cmp	x4, x5
+diff --git a/arch/aarch64/start.S b/arch/aarch64/start.S
+index de454f9..c4f7992 100644
+--- a/arch/aarch64/start.S
++++ b/arch/aarch64/start.S
+@@ -23,6 +23,9 @@ _stack_size:
+ .align 4
+ #endif
+ ENTRY(_start)
++#ifdef CONFIG_BOOTLOADER_FDT_DIAGNOSTIC
++	mov x19, x0 /* preserve incoming FDT across stack/BSS setup */
++#endif
+ 	/* Set up the base address for the stack */
+ 	adrp    x0, _stack_end      /* Load page of the _stack_end symbol */
+ 	add     x0, x0, #:lo12:_stack_end  /* Add the offset within the page */
+@@ -52,6 +55,9 @@ ENTRY(_start)
+ 	add     x2, x2, #:lo12:ramdisk /* Add offset within the page */
+ #endif
+ 
++#ifdef CONFIG_BOOTLOADER_FDT_DIAGNOSTIC
++	mov x3, x19
++#endif
+ 	bl main
+ END(_start)
+ 
+diff --git a/main/Makefile b/main/Makefile
+index cfc56cf..bdbe33e 100644
+--- a/main/Makefile
++++ b/main/Makefile
+@@ -1,2 +1,3 @@
+ obj-y := boot.o main.o
+ obj-$(CONFIG_LIBFDT) += boot-fdt.o
++obj-$(CONFIG_BOOTLOADER_FDT_DIAGNOSTIC) += bootloader-fdt.o
+diff --git a/main/bootloader-fdt.c b/main/bootloader-fdt.c
+new file mode 100644
+index 0000000..ebce5e7
+--- /dev/null
++++ b/main/bootloader-fdt.c
+@@ -0,0 +1,170 @@
++// SPDX-License-Identifier: GPL-2.0-only
++/* Temporary SM-X900 diagnostic: report ABL's live map, then halt. */
++#include <lib/debug.h>
++#include <lib/libfdt/libfdt.h>
++#include <main/main.h>
++#include <string.h>
++
++struct range {
++	unsigned long start, end;
++};
++
++#define MAX_RANGES 128
++static struct range memory[MAX_RANGES], reserved[MAX_RANGES];
++static unsigned int nr_memory, nr_reserved;
++
++static int enabled(const void *dt, int node)
++{
++	const char *status = fdt_getprop(dt, node, "status", NULL);
++
++	return !status || !strcmp(status, "okay") || !strcmp(status, "ok");
++}
++
++static unsigned long cells_value(const fdt32_t *cells, int count)
++{
++	unsigned long value = 0;
++
++	while (count--)
++		value = (value << 32) | fdt32_to_cpu(*cells++);
++	return value;
++}
++
++static void print_range(const char *name, unsigned long start,
++			unsigned long end)
++{
++	printk(KERN_INFO, "%s 0x%lx..0x%lx\n", name, start, end);
++}
++
++/* Report just the parts that our compiled DT would allow Linux to allocate. */
++static void report_overlap(const char *name, unsigned long start,
++			   unsigned long end)
++{
++	unsigned int i, j;
++
++	for (i = 0; i < nr_memory; i++) {
++		unsigned long pos = start > memory[i].start ? start : memory[i].start;
++		unsigned long limit = end < memory[i].end ? end : memory[i].end;
++
++		while (pos < limit) {
++			unsigned long covered_end = pos, next = limit;
++
++			for (j = 0; j < nr_reserved; j++) {
++				if (reserved[j].start <= pos && reserved[j].end > covered_end)
++					covered_end = reserved[j].end;
++				if (reserved[j].start > pos && reserved[j].start < next)
++					next = reserved[j].start;
++			}
++			if (covered_end > pos) {
++				pos = covered_end;
++				continue;
++			}
++			print_range(name, pos, next);
++			pos = next;
++		}
++	}
++}
++
++static void add_range(struct range *ranges, unsigned int *count,
++		      unsigned long start, unsigned long end)
++{
++	if (*count == MAX_RANGES) {
++		printk(KERN_ERR, "Too many ranges; diagnostic incomplete\n");
++		HANG();
++	}
++	ranges[*count] = (struct range){ start, end };
++	(*count)++;
++}
++
++static void node_ranges(const void *dt, int node, int kind)
++{
++	int parent = fdt_parent_offset(dt, node), len;
++	const fdt32_t *prop = fdt_getprop(dt, parent, "#address-cells", &len);
++	int ac = prop && len == 4 ? fdt32_to_cpu(*prop) : 2;
++	int sc;
++
++	prop = fdt_getprop(dt, parent, "#size-cells", &len);
++	sc = prop && len == 4 ? fdt32_to_cpu(*prop) : 1;
++	const fdt32_t *reg = fdt_getprop(dt, node, "reg", &len);
++
++	if (!reg || !enabled(dt, node))
++		return;
++	if (ac < 1 || ac > 2 || sc < 1 || sc > 2 || len % (4 * (ac + sc))) {
++		printk(KERN_ERR, "Invalid reg/cells; diagnostic incomplete\n");
++		HANG();
++	}
++	for (; len; len -= 4 * (ac + sc), reg += ac + sc) {
++		unsigned long start = cells_value(reg, ac);
++		unsigned long size = cells_value(reg + ac, sc);
++
++		if (!size)
++			continue;
++		if (start + size < start) {
++			printk(KERN_ERR, "Overflow in reg; diagnostic incomplete\n");
++			HANG();
++		}
++		switch (kind) {
++		case 0:
++			add_range(memory, &nr_memory, start, start + size);
++			break;
++		case 1:
++			add_range(reserved, &nr_reserved, start, start + size);
++			break;
++		case 2:
++			print_range("ABL RAM", start, start + size);
++			break;
++		case 3:
++			report_overlap(fdt_get_name(dt, node, NULL), start, start + size);
++			break;
++		}
++	}
++}
++
++static void walk_memory(const void *dt, int kind)
++{
++	int node;
++
++	fdt_for_each_subnode(node, dt, 0) {
++		const char *type = fdt_getprop(dt, node, "device_type", NULL);
++
++		if (type && !strcmp(type, "memory"))
++			node_ranges(dt, node, kind);
++	}
++}
++
++static void walk_reserved(const void *dt, int kind)
++{
++	int node, root = fdt_path_offset(dt, "/reserved-memory");
++	int i, count = fdt_num_mem_rsv(dt);
++
++	for (i = 0; i < count; i++) {
++		uint64_t start, size;
++
++		if (fdt_get_mem_rsv(dt, i, &start, &size) || !size)
++			continue;
++		if (kind == 1)
++			add_range(reserved, &nr_reserved, start, start + size);
++		else
++			report_overlap("ABL memreserve", start, start + size);
++	}
++	if (root >= 0 && enabled(dt, root))
++		fdt_for_each_subnode(node, dt, root)
++			node_ranges(dt, node, kind);
++}
++
++void bootloader_fdt_diagnostic(const void *compiled, const void *bootloader)
++{
++	printk(KERN_INFO, "=== SM-X900 ABL memory diagnostic ===\n");
++	printk(KERN_INFO, "Captured FDT at 0x%lx\n", (unsigned long)bootloader);
++	if (!bootloader || fdt_check_header(bootloader)) {
++		printk(KERN_ERR, "No valid incoming bootloader FDT\n");
++		HANG();
++	}
++	printk(KERN_INFO, "ABL FDT size %u bytes\n", fdt_totalsize(bootloader));
++	walk_memory(compiled, 0);
++	walk_reserved(compiled, 1);
++	walk_memory(bootloader, 2);
++	printk(KERN_INFO, "=== ABL reservations exposed by our DT ===\n");
++	walk_reserved(bootloader, 3);
++	printk(KERN_INFO, "=== Diagnostic complete; Linux NOT started ===\n");
++	HANG();
++}
+diff --git a/main/main.c b/main/main.c
+index 579def3..8aae47d 100644
+--- a/main/main.c
++++ b/main/main.c
+@@ -25,7 +25,13 @@ static void print_splash(void)
+ 	printk(KERN_INFO, "welcome to uniLoader %s on %s\n", VER_TAG, board_ops.name);
+ }
+ 
++#ifdef CONFIG_BOOTLOADER_FDT_DIAGNOSTIC
++extern void bootloader_fdt_diagnostic(const void *compiled, const void *bootloader);
++
++void main(void* dt, void* kernel, void* ramdisk, void* bootloader_dt)
++#else
+ void main(void* dt, void* kernel, void* ramdisk)
++#endif
+ {
+ 	early_console_init();
+ 	INITCALL(board_ops.ops.early_init);
+@@ -36,6 +42,9 @@ void main(void* dt, void* kernel, void* ramdisk)
+ 
+ 	INITCALL(board_ops.ops.late_init);
+ 
++#ifdef CONFIG_BOOTLOADER_FDT_DIAGNOSTIC
++	bootloader_fdt_diagnostic(dt, bootloader_dt);
++#endif
+ 	boot_kernel(dt, kernel, ramdisk);
+ 
+ 	// todo: reset the board?
