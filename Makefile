@@ -588,31 +588,36 @@ sync-overlay: ## Copy packages OUT of the live pmaports tree back into the repo
 
 lint: ## Validate packaging + DTS bracket balance (full DTS check = `make kernel`)
 	@echo "== APKBUILD shell syntax =="
-	@for f in $(OVERLAY)/*/APKBUILD $(TEMP_OVERLAY)/*/APKBUILD; do bash -n $$f && echo "  ok: $$f"; done
+	@set -e; for f in $(OVERLAY)/*/APKBUILD $(TEMP_OVERLAY)/*/APKBUILD; do bash -n "$$f"; echo "  ok: $$f"; done
 	@echo "== deviceinfo shell syntax =="
-	@bash -n $(OVERLAY)/$(DPKG)/deviceinfo && echo "  ok: deviceinfo"
+	@set -e; for f in $(OVERLAY)/device-samsung-*/deviceinfo; do bash -n "$$f"; echo "  ok: $$f"; done
 	@echo "== DTS sanity =="
 	@# The DTS #includes sm8450.dtsi and dt-bindings headers that only exist
 	@# inside the kernel tree, so it CANNOT be compiled standalone. The real
 	@# syntax check is the kernel build (`make kernel`), which compiles the dtb.
 	@# Here we only catch the cheap structural mistakes.
-	@f=$(OVERLAY)/$(KPKG)/sm8450-samsung-gts8pwifi.dts; \
-	 ob=$$(tr -cd '{' < $$f | wc -c); cb=$$(tr -cd '}' < $$f | wc -c); \
-	 if [ "$$ob" = "$$cb" ]; then echo "  ok: braces balanced ($$ob)"; \
-	 else echo "  FAIL: brace mismatch ($$ob open vs $$cb close)"; exit 1; fi; \
-	 grep -q 'compatible = "samsung,gts8pwifi"' $$f \
-	   && echo "  ok: compatible present" || { echo "  FAIL: compatible missing"; exit 1; }
+	@# Check both gts8pwifi (Tab S8+) and gts8uwifi (Tab S8 Ultra).
+	@set -e; for f in $(OVERLAY)/$(KPKG)/sm8450-samsung-*.dts; do \
+	 board=$${f##*/sm8450-samsung-}; board=$${board%.dts}; \
+	 ob=$$(tr -cd '{' < "$$f" | wc -c); cb=$$(tr -cd '}' < "$$f" | wc -c); \
+	 if [ "$$ob" = "$$cb" ]; then echo "  ok: $$board braces balanced ($$ob)"; \
+	 else echo "  FAIL: $$board brace mismatch ($$ob open vs $$cb close)"; exit 1; fi; \
+	 grep -q "compatible = \"samsung,$$board\"" "$$f" \
+	   && echo "  ok: $$board compatible present" || { echo "  FAIL: $$board compatible missing"; exit 1; }; \
+	 done
 	@# A stray '*/' inside a comment silently ENDS that comment, and the rest
 	@# of the prose then parses as device tree. This has bitten us twice now,
 	@# both times from pasting a shell glob like /sys/.../<star>/file into a
 	@# comment. Catch it here instead of 3 minutes into a kernel build.
-	@f=$(OVERLAY)/$(KPKG)/sm8450-samsung-gts8pwifi.dts; \
+	@set -e; for f in $(OVERLAY)/$(KPKG)/sm8450-samsung-*.dts; do \
+	 board=$${f##*/sm8450-samsung-}; board=$${board%.dts}; \
 	 awk '/\/\*/{c=1} c&&/\*\//{n=gsub(/\*\//,"&"); if(n>1||/[^ \t].*\*\/.+/){ \
 	   if ($$0 !~ /^[ \t]*\*\/[ \t]*$$/ && $$0 !~ /\*\/[ \t]*$$/) \
 	     {print "  FAIL: stray */ mid-line at line " NR ": " $$0; bad=1}} c=0} \
-	   END{exit bad?1:0}' $$f \
-	   && echo "  ok: no stray */ inside comments" \
-	   || { echo "  (a comment is closed early — that text will parse as DTS)"; exit 1; }
+	   END{exit bad?1:0}' "$$f" \
+	   && echo "  ok: $$board no stray */ inside comments" \
+	   || { echo "  (a comment is closed early — that text will parse as DTS)"; exit 1; }; \
+	 done
 	@echo "  note: authoritative DTS validation is 'make kernel' (compiles the dtb)"
 
 dtb-dump: ## Decompile the DTB of the kernel apk the APKBUILD names (inspect what the kernel sees)
