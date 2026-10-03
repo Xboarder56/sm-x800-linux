@@ -1,0 +1,17 @@
+{
+  "source": "SM-X900 revision 5, X900XXU9DYDC: uniLoader R7 framebuffer output, 2026-10-03; transcribed address ranges only, not a stock FDT dump",
+  "fdt_size_bytes": 864115,
+  "memory": [
+    ["0x80000000", "0xea000000"],
+    ["0xf1c00000", "0x100000000"],
+    ["0x800000000", "0x839500000"],
+    ["0x900000000", "0xa80000000"],
+    ["0x840000000", "0x900000000"],
+    ["0x839b00000", "0x83b900000"]
+  ],
+  "additional_reservations": [
+    {"name": "kaslr_region", "range": ["0xb01ff000", "0xb0200000"]},
+    {"name": "uh_guest_region", "range": ["0xb1000000", "0xb2a00000"]},
+    {"name": "uh_heap_region", "range": ["0xb0200000", "0xb0240000"]}
+  ]
+}
