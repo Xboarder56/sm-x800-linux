@@ -1,0 +1,36 @@
+board: register Samsung Galaxy Tab S8 Ultra Wi-Fi (gts8uwifi)
+
+Add the SM8450 X900 board alongside X800. Board source and defconfig
+are provided by the port overlay. Generated against pinned uniLoader
+43770a04327532407194ddd3f9f35770daa01c70 plus patches 0001-0004.
+
+diff --git a/board/Kconfig b/board/Kconfig
+index fb67b3c..c74163d 100644
+--- a/board/Kconfig
++++ b/board/Kconfig
+@@ -201,6 +201,13 @@ menu "Device Support"
+ 		help
+ 		  Say Y if you want to include support for Samsung Galaxy Tab S8+ Wi-Fi
+ 
++	config SAMSUNG_GTS8UWIFI
++		bool "Support for Samsung Galaxy Tab S8 Ultra Wi-Fi"
++		default n
++		depends on SM8450
++		help
++		  Say Y if you want to include support for Samsung Galaxy Tab S8 Ultra Wi-Fi
++
+ 	config SAMSUNG_HEROLTE
+ 		bool "Support for Samsung Galaxy S7"
+ 		default n
+diff --git a/board/Makefile b/board/Makefile
+index 4642f18..f8546a7 100644
+--- a/board/Makefile
++++ b/board/Makefile
+@@ -25,6 +25,7 @@ lib-$(CONFIG_SAMSUNG_DREAMLTE) += samsung/board-dreamlte.o
+ lib-$(CONFIG_SAMSUNG_G0S) += samsung/board-g0s.o
+ lib-$(CONFIG_SAMSUNG_GTA4XL) += samsung/board-gta4xl.o
+ lib-$(CONFIG_SAMSUNG_GTS8PWIFI) += samsung/board-gts8pwifi.o
++lib-$(CONFIG_SAMSUNG_GTS8UWIFI) += samsung/board-gts8uwifi.o
+ lib-$(CONFIG_SAMSUNG_HEROLTE) += samsung/board-herolte.o
+ lib-$(CONFIG_SAMSUNG_J4LTE) += samsung/board-j4lte.o
+ lib-$(CONFIG_SAMSUNG_J5LTE) += samsung/board-j5lte.o
