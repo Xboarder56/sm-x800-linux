@@ -1,0 +1,43 @@
+console: preserve the final newline when printk truncates a message
+
+The Galaxy Tab S8 Ultra command line exceeds printk's 256-byte buffer.
+Truncation drops its final newline, leaving simplefb's cursor on the last
+wrapped line. The following "Booting kernel..." prefix then overwrites it.
+
+When a truncated format ends in a newline, retain that newline in the last
+available buffer byte. Keep the buffer size and existing short/unterminated
+message behavior unchanged. This avoids increasing the loader's BSS or
+changing its payload/stack addresses just to fix console formatting.
+
+Generated against uniLoader 43770a0 with the existing port patch stack.
+A host harness using the actual console formatter reproduces the missing
+newline before this change and checks truncated, short and unterminated logs.
+Both board builds retain the payload/BSS/relocation addresses. On SM-X900,
+"Booting kernel..." stays on its own line and Linux text and USB still work.
+
+diff --git a/lib/console/console.c b/lib/console/console.c
+index 652ac7a..034ba1b 100644
+--- a/lib/console/console.c
++++ b/lib/console/console.c
+@@ -87,11 +87,20 @@ void printk(int log_level, const char *fmt, ...)
+ 
+ 	va_list args;
+ 	static char print_buffer[PRINTK_BUFFER_SIZE];
++	int length;
+ 
+ 	va_start(args, fmt);
+-	npf_vsnprintf(print_buffer, sizeof(print_buffer), fmt, args);
++	length = npf_vsnprintf(print_buffer, sizeof(print_buffer), fmt, args);
+ 	va_end(args);
+ 
++	/* Keep the next console prefix off a truncated message's last line. */
++	if (length >= (int)sizeof(print_buffer)) {
++		size_t fmt_length = strlen(fmt);
++
++		if (fmt_length && fmt[fmt_length - 1] == '\n')
++			print_buffer[sizeof(print_buffer) - 2] = '\n';
++	}
++
+ 	const char *prefix = log_prefix(log_level);
+ 
+ 	for (unsigned int i = 0; i < n_consoles; i++)
