@@ -12,19 +12,60 @@ Samsung Download Mode enumerates on this Mac and BOOT-only Heimdall flashes
 succeed. That establishes a working cable and transport in Download Mode.
 It does not establish Linux gadget operation.
 
-The restored R8 photo (`IMG_5644.JPG`) shows the Linux UDC `a600000.usb`,
-successful binding of the ACM gadget, and repeated diagnostic heartbeats.
-macOS did not enumerate that R8 gadget during the observations.
+After Download Mode, the MAX77705 data switch is open even though its
+firmware reports a sink/UFP connection. On the attached DYDC tablet:
 
-R11 retains R8's descriptors and loader layout, adding only UDC state/speed
-prints. The user's photo shows `not attached` / `UNKNOWN` at 3.54 seconds,
-then `configured` / `high-speed` at 23.55 seconds. macOS detects VID `0x18d1`,
-PID `0xd001`, configuration 1, at 480 Mbit/s and creates a USB modem port.
-An interactive root shell works over that ACM port; runtime logs and a
-checksum-verified 11.8 MB RAM-only transfer were captured. The user also
-reseated USB during this boot. This proves USB2 device/ACM operation on R11;
-the cause of the earlier missing enumeration is not isolated. USB networking,
-SSH, host mode and SuperSpeed remain unverified.
+| Register or mailbox response | Before routing | After routing |
+|---|---|---|
+| CC_STATUS0 (`0x0a`) | `0xb1` (sink) | — |
+| PD_STATUS1 (`0x0d`) | `0x57` (UFP/device) | — |
+| CTRL1, read with opcode `0x05` | `0x3f` (open) | `0x09` (USB) |
+| UDC state / speed | `not attached` / `UNKNOWN` | `configured` / `high-speed` |
+
+Sending `CTRL1_W` opcode `0x06` with `COM_USB=0x09` connects D+/D- to the
+PHY. Two BOOT-only diagnostic boots attached and provided an interactive
+ACM root shell without a cable replug. The stock-confirmed I2C controller
+is `994000.i2c`; its adapter is under `/sys/bus/i2c/devices`, not the removed
+`/sys/class/i2c-adapter` path. PMIC ID/revision read `0x15` / `0x02` (PASS2).
+CCIC hardware revision is `0x1a`, firmware revision `0x5f`, raw minor byte
+`0x48` (the driver's version mask reports `5F.00`). Captures are in
+`root-build/gts8uwifi-debug-r18-muic/`, including the repeat boot and PMIC ID.
+
+The existing patched `max77705-usbc` kernel driver performs the same routing
+when setting its data role. With the MFD and Type-C clients enabled, a
+BOOT-only test attaches without userspace I2C commands or a replug. Both
+drivers bind, the Type-C port reports sink/device, and its power supply
+reports 5,000,000 microvolts. Charger and gauge clients stay disabled;
+omitting their supply/reference keeps the Type-C driver's PD policy at 5 V
+and provides no OTG boost control. This is USB2 device support; host mode,
+SuperSpeed, USB networking, SSH and charger/gauge operation remain unverified.
+Kernel-driver captures are in `root-build/gts8uwifi-debug-r19-typec/`.
+Package `7.2-r51` reproduces initial USB attachment and readable Linux text
+with no userspace routing or automatic Download Mode timeout. Its BOOT
+SHA-256 is `ed4f3ffcfc40b0a50277086daea67c667380a195e499f7ef387dbd9ee8fe0594`;
+the capture is in `root-build/gts8uwifi-debug-r21-typec-package/`.
+
+The single 5 V PDO retains stock capability flags (`0x3601912c`). A test
+changing only those flags to USB communication alone (`0x0401912c`) left
+Linux, its framebuffer and USB running but blanked the inherited scanout.
+Restoring the original value restored visible text. This is an observation,
+not an established explanation of the display/firmware interaction; revisit
+the flags when native display owns the hardware.
+
+macOS enumerates VID `0x18d1`, PID `0xd001`, configuration 1, at 480 Mbit/s
+and creates a USB modem port. An earlier ACM test also transferred an
+11.8 MB ramdisk to RAM with a matching checksum. UFS filesystems remain
+unmounted during these diagnostic tests.
+
+The failed gadget/controller resets help distinguish this routing fault:
+unbinding/rebinding the ACM gadget and removing/reprobing DWC3 did not
+restore attachment while the switch was open. In the controller-reset test,
+PHY offsets `0x58`, `0x60`, `0x64`, `0x94` read `0x3b3b3b3b`, `0x01010101`,
+`0x06060606`, `0x00000000`; QSCRATCH HS PHY control stayed `0x10100000`.
+Those values also remain unchanged when routing alone restores attachment.
+EUD enable at `0x088e2000` is zero before a replug during the failure, so
+an active EUD was not its cause. Captures are in
+`root-build/gts8uwifi-debug-r15-usb-reset/` and the user's `IMG_5654.JPG`.
 
 ## Controller and PHY
 
@@ -38,8 +79,8 @@ Stock PHY supplies resolve to PM8350 L5 (0.88 V), PM8350C L1 (1.8 V), and
 PM8350 L2 (3.07 V), matching the experimental board's PHY supplies. The
 stock driver also maps `eud_enable_reg` at `0x088e2000`, and the stock tree
 enables its EUD node. The mainline PHY does not map that second resource.
-This difference is recorded for investigation; no live EUD state has been
-captured and it is not an established cause of the missing link.
+The live EUD enable bit is already clear during the initial attachment
+failure, as described above.
 
 Linux 7.2 `drivers/usb/dwc3/dwc3-qcom.c` enables its VBUS-valid override in
 fixed peripheral mode and again through the gadget run/stop notifier.
@@ -89,10 +130,9 @@ MUIC switch remained open despite a powered USB host partner. Sending
 enumerated the mouse. The patched driver's data-role setter performs that
 routing for both roles.
 
-This is sibling hardware evidence, not an SM-X900 measurement. The X900
-debug DTS currently disables the MAX77705 bus and driver, and its live
-switch state is unknown. R11's working ACM link shows that enabling that
-driver is not required for this observed boot. If a later boot remains not
-attached, capture the CCIC/MUIC state before attributing the failure to PHY
-tuning or enabling the complete PD/charging driver. Preserve the working
-R8/R11 controls for comparison.
+The SM-X900 measurements above now corroborate this routing requirement
+for USB device mode: CTRL1 is initially `0x3f`, and selecting USB restores
+attachment. The first-boot DTS enables the MFD and Type-C driver for that
+routing while keeping DWC3 in fixed peripheral mode and charger/gauge
+clients disabled. The inherited dual-role setup still needs separate X900
+validation before enabling host mode, OTG boost or higher-voltage charging.

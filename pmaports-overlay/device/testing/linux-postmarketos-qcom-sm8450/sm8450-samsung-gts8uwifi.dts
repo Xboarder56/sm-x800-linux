@@ -1320,6 +1320,12 @@
 /*
  * USB — dual role, USB 2.0 only, roles switched by the MAX77705 CCIC.
  *
+ * X900 first boot currently uses fixed peripheral mode. The MAX77705
+ * driver routes D+/D- to USB: DYDC leaves CTRL1 at 0x3f (open) after
+ * Download Mode, and COM_USB=0x09 restores gadget attachment without a
+ * cable replug. The sink/device-only overrides below keep the charger
+ * and gauge disabled while their Ultra-specific data is validated.
+ *
  * v7.2's sm8450.dtsi uses the FLATTENED dwc3 binding: the single node usb_1
  * (usb@a600000, "qcom,sm8450-dwc3" + "qcom,snps-dwc3") carries both the
  * Qualcomm glue and the Synopsys core properties, so dr_mode / phys /
@@ -1341,7 +1347,7 @@
  * 2. qcom,select-utmi-as-pipe-clk. With the SuperSpeed phy gone there is no
  *    pipe clock, so the qcom glue must be told to clock from UTMI instead.
  *
- * Roles (ADR-003 stage 3). The Type-C controller is not pmic_glink here:
+ * X800 roles (ADR-003 stage 3). The Type-C controller is not pmic_glink here:
  * it is the MAX77705 CCIC (typec@25 on &i2c5, max77705-usbc). Its
  * connector's port@0 endpoint links to usb_1's HS port below, and that
  * graph is how the driver finds dwc3's role switch: host when the CCIC
@@ -1349,7 +1355,7 @@
  * boost), device when it reports a source or a PD DR swap to UFP, none
  * when detached. dr_mode is "otg" and the dtsi's usb-role-switch is kept.
  *
- * Until r33 this node was fixed in host mode with usb-role-switch deleted,
+ * Until r33 the X800 node was fixed in host mode with usb-role-switch deleted,
  * because nothing on this board consumed the switch and VBUS was a manual
  * userspace rail (the vbus-otg regulator-output node, now removed: it and
  * the CCIC driver would both hold the regulator, and a userspace enable
@@ -2175,12 +2181,38 @@
 };
 
 /*
- * Initial debug boot: USB2 device mode without a MAX77705 mailbox/charging
- * driver. Leave firmware's sink state alone; do not request PD or source VBUS.
+ * Initial debug boot: MAX77705 MFD + Type-C data routing, USB2 sink/device
+ * mode only. No charger reference keeps the Type-C driver's PD requests at
+ * 5 V; no VBUS regulator reference can enable the OTG boost. Charger and
+ * gauge setup remain disabled until their X900 battery data is validated.
  * Amplifiers, input peripherals and sensors are separate bring-up stages.
  */
 &i2c4 { status = "disabled"; };
-&i2c5 { status = "disabled"; };
+&i2c5 {
+	status = "okay";
+
+	pmic@66 { status = "okay"; };
+	charger@69 { status = "disabled"; };
+
+	typec@25 {
+		status = "okay";
+		/delete-property/ vbus-supply;
+		/delete-property/ maxim,charger;
+
+		connector {
+			power-role = "sink";
+			data-role = "device";
+			/delete-property/ try-power-role;
+			/* Retain the validated stock 5 V capability word (0x3601912c). */
+			sink-pdos = <PDO_FIXED(5000, 3000, PDO_FIXED_DUAL_ROLE |
+						PDO_FIXED_HIGHER_CAP |
+						PDO_FIXED_USB_COMM |
+						PDO_FIXED_DATA_SWAP)>;
+		};
+	};
+
+	fuel-gauge@36 { status = "disabled"; };
+};
 &i2c18 { status = "disabled"; };
 &wacom_i2c { status = "disabled"; };
 &wacom_avdd { status = "disabled"; };
