@@ -232,6 +232,12 @@ and the same `wacom,invert`. The driver identifies firmware `4010` with a
 31376 x 19589 coordinate range, 4096 pressure levels and tilt, and registers
 `Wacom WEZ01 S Pen`. No pen has touched the screen under Linux yet.
 
+Kernel package `7.2-r75` enables the keyboard-cover controller: the STM32 at
+0x2a on `i2c@88c000` with connection detect on TLMM 59, attention on 71,
+reset on 97 and its supply switch on 70, as in the stock X900 node
+(`EF-DX900`). The driver probes and reports no cover attached. No keyboard
+cover has been attached under Linux yet.
+
 `poweroff` with the USB cable attached comes straight back up: the bootloader
 powers the tablet on when a charger is present. Unplugged, it stays off and
 the power button starts it. No kernel change is involved; a PS_HOLD rewrite
@@ -325,7 +331,7 @@ deferred.
 | Area | Remaining work |
 |---|---|
 | Display | A look at display off/on by eye; stock's delayed display-on and MAX77816 boost programming; the bootloader's varying handoff state; brightness curve and HBM; 60 Hz switching; boots after an unclean reset. |
-| Input | GT6936 pen/palm events, more than two contacts, suspend/resume and firmware update; X900 S Pen and pogo/cover keyboard; remaining buttons. |
+| Input | GT6936 pen/palm events, more than two contacts, suspend/resume and firmware update; a hands-on check of the S Pen, the keyboard cover, volume-up and the hall switches, whose drivers all probe. |
 | Graphics | Rendering to the panel and a compositor on the Adreno 730; a packaged source for the zap shader on X900. The GPU initialises and Mesa reports FD730. |
 | Wireless | Wi-Fi association, throughput and 5/6 GHz; a Bluetooth address source and pairing; module and firmware packaging for an installed system. Scanning works on both radios. |
 | USB | Host networking/SSH, host mode, SuperSpeed and role changes. USB2 device serial works. |

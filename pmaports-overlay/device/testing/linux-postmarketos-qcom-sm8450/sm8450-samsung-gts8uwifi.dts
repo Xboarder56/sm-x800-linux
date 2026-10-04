@@ -2290,7 +2290,6 @@
 
 	fuel-gauge@36 { status = "disabled"; };
 };
-&i2c18 { status = "disabled"; };
 &vamacro { status = "disabled"; };
 &usb_1_dwc3_hs { /delete-property/ remote-endpoint; };
 &max77705_typec_hs { /delete-property/ remote-endpoint; };
