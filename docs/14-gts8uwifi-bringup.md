@@ -269,13 +269,19 @@ volume-down and power all register. `kmscube` draws 74 frames per second at
 the native resolution. The owner saw a brief flash at the initramfs handoff
 and again as services start; it varies from boot to boot.
 
-The desktop is not stable yet. The Adreno's power controller intermittently
-stops answering (`HFI_H2F_MSG_GX_BW_PERF_VOTE ... timed out`, then
-`Timeout waiting for GMU OOB set GPU_SET`), the GPU hangs and the login screen
-or session can crash. Stable commit 51fcee9d4140 (in `7.2-r81`) and dropping
-`clk_ignore_unused pd_ignore_unused` each made it rarer, from tens of seconds
-to minutes of use; keeping the GPU out of runtime suspend avoids it. The root
-cause is open.
+The desktop used to freeze for a second at a time and then lose the GPU
+(`HFI_H2F_MSG_GX_BW_PERF_VOTE ... timed out`, then `Timeout waiting for GMU
+OOB set GPU_SET` and a hangcheck), taking the login screen or session with
+it after seconds to minutes of use. The GMU had answered: the HFI interrupt
+handler cleared the reply bit before the code polling for it looked. Kernel
+package `7.2-r82` masks the HFI interrupts before the GMU firmware starts
+and stops the handler touching reply bits. With the panel off, 5000 GMU
+resumes and nine minutes of KWin on a virtual output ran without a timeout,
+where the unchanged driver had 12 in 800 and 14 in three minutes. `7.2-r83`
+adds the GPU's memory path and stock DDR bandwidth table, which shortens a
+GMU resume from 16-30 ms to about 9 ms. A hands-on session on the fixed
+kernel is still to do. Evidence is in
+[gpu](../device-facts/gts8uwifi/gpu.md).
 
 Notes from the desktop work: a DRM client closing the last open file on the
 device, render node included, restores the fbdev console and wakes a blanked
@@ -377,7 +383,7 @@ deferred.
 |---|---|
 | Display | A look at display off/on by eye; stock's delayed display-on and MAX77816 boost programming; the bootloader's varying handoff state; brightness curve and HBM; 60 Hz switching; boots after an unclean reset. |
 | Input | GT6936 pen/palm events, more than two contacts, suspend/resume and firmware update; a keyboard cover and the hall switches changing state. Touch, the S Pen and all three keys work under Plasma. |
-| Graphics | The intermittent GMU timeout that hangs the GPU under a compositor; a packaged source for the zap shader on X900. Plasma renders on the Adreno 730 between hangs. |
+| Graphics | A hands-on desktop session on `7.2-r83` to confirm the GMU timeout fix; sending that fix upstream; a packaged source for the zap shader on X900. Plasma renders on the Adreno 730. |
 | Wireless | A way for the X900 package to obtain the stock Wi-Fi firmware set; throughput; a Bluetooth address source and pairing. Wi-Fi works on 6 GHz with the stock set. |
 | USB | Host networking/SSH, host mode, SuperSpeed and role changes. USB2 device serial works. |
 | Power | Enabling the charger and fuel gauge with the X900 battery data (audited in [power](../device-facts/gts8uwifi/power.md), not enabled), idle consumption and system suspend/resume. The bootloader's charger state keeps the battery full; SoC thermal zones and both thermistors read. |
