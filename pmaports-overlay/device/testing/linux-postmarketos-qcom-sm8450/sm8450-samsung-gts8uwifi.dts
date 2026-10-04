@@ -413,8 +413,6 @@
 	 */
 	wcn6855-pmu {
 		compatible = "qcom,wcn6855-pmu";
-		/* X800 placeholder only; X900 QCA6490 power sequencing is R2+. */
-		status = "disabled";
 
 		pinctrl-0 = <&bt_en>, <&wlan_en>, <&xo_clk_default>;
 		pinctrl-names = "default";
@@ -2175,23 +2173,12 @@
 };
 
 /*
- * X900 first-boot quarantine. The stock board uses QCA6490 rather than the
- * X800 WCN6855 identity, and the signed GPU/ADSP/SLPI blobs have not yet been
- * staged under the gts8uwifi namespace. Keep these nonessential subsystems
- * off until the core boot/UFS/display path is proven.
+ * X900 first-boot quarantine. The signed GPU/ADSP/SLPI blobs have not yet
+ * been staged under the gts8uwifi namespace. Keep these nonessential
+ * subsystems off until each is validated on this board. WiFi/BT left the
+ * quarantine once the X900 stock cnss-qca6490/bt_qca6490 nodes were checked:
+ * same enable GPIOs, rails and BT UART as the description above.
  */
-&pcie0 {
-	status = "disabled";
-};
-
-&pcie0_phy {
-	status = "disabled";
-};
-
-&uart20 {
-	status = "disabled";
-};
-
 &gpu {
 	status = "disabled";
 };

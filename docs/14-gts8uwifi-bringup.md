@@ -127,6 +127,17 @@ same sources and DTB. Three further boots of that build and the first boot of
 the package build then matched by log only: native framebuffer, 120.7-120.8 Hz
 vblank, touch registered, no SMMU fault or display error.
 
+Kernel package `7.2-r64` enables the WCN6855: the X900 stock `cnss-qca6490`
+and `bt_qca6490` nodes use the same enable GPIOs (80/81/82/204), rails and BT
+UART as the inherited description. With the modules and linux-firmware blobs
+loaded into RAM, ath11k reports `wcn6855 hw2.1` (chip 0x2, board 0xff) and a
+scan returns 12 networks on 2.4 GHz; no 5/6 GHz network was seen under the
+world regulatory domain and no association was attempted. Bluetooth loads
+`wcnhpbtfw21.tlv`/`wcnhpnv21.bin`; the controller has no stored address
+(`00:00:00:00:5A:AD`) and stays unconfigured until one is set, after which a
+12 s discovery finds 83 devices. The X900 device package has no address
+helper or firmware dependencies yet, and the modules are not in the initramfs.
+
 Display off/on is **not** validated. fbdev blanking panics this kernel without
 a log a few seconds after the CRTC is disabled while fbcon is bound; detaching
 fbcon first avoids it. One wake from sleep-in then left the panel controller
@@ -217,7 +228,7 @@ deferred.
 | Display | Display off/on: the fbcon-on-disabled-CRTC panic and the wake path from sleep-in, including stock's MAX77816 boost programming; brightness curve and HBM; 60 Hz switching; boots after an unclean reset. |
 | Input | GT6936 pen/palm events, more than two contacts, suspend/resume and firmware update; X900 S Pen and pogo/cover keyboard; remaining buttons. |
 | Graphics | Adreno GPU firmware, GMU initialization and hardware acceleration. |
-| Wireless | X900 Wi-Fi and Bluetooth wiring/firmware, connectivity and recovery. |
+| Wireless | Wi-Fi association, throughput and 5/6 GHz; a Bluetooth address source and pairing; module and firmware packaging for an installed system. Scanning works on both radios. |
 | USB | Host networking/SSH, host mode, SuperSpeed and role changes. USB2 device serial works. |
 | Power | Charger/gauge and battery readings, thermal sensors, idle consumption and system suspend/resume. |
 | Storage/system | UFS filesystem operation, microSD, an installed rootfs and normal userspace boot. UFS enumeration works. |
