@@ -32,15 +32,12 @@
 #include <linux/of.h>
 #include <linux/regulator/consumer.h>
 #include <linux/property.h>
-#include <linux/workqueue.h>
 
 #include <drm/display/drm_dsc.h>
 #include <drm/display/drm_dsc_helper.h>
 #include <drm/drm_mipi_dsi.h>
 #include <drm/drm_probe_helper.h>
 #include <drm/drm_panel.h>
-
-#include <video/mipi_display.h>
 
 struct s6tuum1;
 
@@ -54,12 +51,6 @@ struct s6tuum1_panel_desc {
 	unsigned int slice_height;
 	unsigned int default_brightness;
 	unsigned int max_brightness;
-	/*
-	 * Stock samsung,delayed-display-on: display-on follows the first
-	 * frame, so the panel never scans out its post-reset frame memory.
-	 * Zero sends display-on directly from the enable callback.
-	 */
-	unsigned int display_on_delay_ms;
 	/*
 	 * Stock always-on-touch policy: display-off only sends display-off
 	 * and sleep-in. The panel supply stays on and reset is never asserted
@@ -76,7 +67,6 @@ struct s6tuum1 {
 	struct gpio_desc *tcon_rdy_gpio;
 	struct regulator *vdd;
 	const struct s6tuum1_panel_desc *desc;
-	struct delayed_work display_on_work;
 	bool powered;
 	/* The bootloader's panel state has not been replaced yet. */
 	bool boot_on;
@@ -211,13 +201,17 @@ static int s6tuum1_amsa24_on(struct s6tuum1 *priv)
  * See device-facts/gts8uwifi/display.md for provenance. Samsung sends compression
  * mode before the PPS. The stock 60 Hz and 120 Hz streams differ only in
  * the refresh select, 0x60 = 0x00 or 0x20, with a 50 ms post-write delay.
+ *
+ * The stream is sent exactly as stock has it. This TCON is awake once
+ * tcon_rdy rises and stock sends it no sleep-out: replaying the sequence by
+ * hand, the inherited 0x11 dropped tcon_rdy at once and every later command
+ * timed out, which is the dark panel after a reset. TE is likewise running
+ * after reset; the inherited two-byte tear-on switched it off, so no tear-on
+ * is sent either.
  */
 static int s6tuum1_amsa46_on(struct s6tuum1 *priv)
 {
 	struct mipi_dsi_multi_context ctx = { .dsi = priv->dsi };
-
-	mipi_dsi_dcs_exit_sleep_mode_multi(&ctx);
-	mipi_dsi_msleep(&ctx, 120);
 
 	mipi_dsi_dcs_write_seq_multi(&ctx, 0xd3, 0x4f);
 	mipi_dsi_dcs_write_seq_multi(&ctx, 0x98, 0x00);
@@ -249,14 +243,6 @@ static int s6tuum1_amsa46_on(struct s6tuum1 *priv)
 	mipi_dsi_dcs_write_seq_multi(&ctx, 0x68, 0x19);
 	mipi_dsi_dcs_write_seq_multi(&ctx, 0xb0, 0x00, 0xc3, 0xb3);
 	mipi_dsi_dcs_write_seq_multi(&ctx, 0xb3, 0x0d);
-
-	/*
-	 * This TCON takes tear-on without a parameter. The standard two-byte
-	 * form switched TE off altogether, leaving the DPU on its free-running
-	 * vsync fallback at half the panel rate. Stock sends no tear-on here;
-	 * the parameterless form restores the 230 us pulse per 8.3 ms frame.
-	 */
-	mipi_dsi_dcs_write_seq_multi(&ctx, MIPI_DCS_SET_TEAR_ON);
 
 	return ctx.accum_err;
 }
@@ -305,25 +291,22 @@ static int s6tuum1_prepare(struct drm_panel *panel)
 		usleep_range(11000, 12000);
 	}
 
-	priv->adopted = false;
-	if (priv->desc->keep_power && s6tuum1_tcon_ready(priv)) {
-		/*
-		 * Stock tcon_prepare() skips the reset while tcon_rdy is high
-		 * and adopts the bootloader's panel untouched. A warm reset
-		 * here flashed the panel and intermittently left the TCON
-		 * dropping its ready line within a second of the init
-		 * sequence.
-		 */
-		if (priv->boot_on) {
-			priv->boot_on = false;
-			priv->adopted = true;
-			return 0;
-		}
-	} else {
-		priv->desc->reset(priv);
-		s6tuum1_wait_tcon_ready(priv);
-	}
+	/*
+	 * Stock tcon_prepare() skips the reset while tcon_rdy is high and
+	 * adopts the bootloader's panel untouched; a reset at handoff flashed
+	 * the panel. That only holds for the first prepare. Every later one
+	 * follows a sleep-in, which this TCON leaves through reset, and it is
+	 * reset even if it still reports ready: the panel stays powered across
+	 * reboots, so a TCON left ignoring commands by an earlier session
+	 * would otherwise never recover.
+	 */
+	priv->adopted = priv->boot_on && s6tuum1_tcon_ready(priv);
 	priv->boot_on = false;
+	if (priv->adopted)
+		return 0;
+
+	priv->desc->reset(priv);
+	s6tuum1_wait_tcon_ready(priv);
 
 	ret = priv->desc->on(priv);
 	if (ret < 0) {
@@ -371,17 +354,6 @@ static int s6tuum1_amsa46_set_refresh(struct s6tuum1 *priv)
 	return ctx.accum_err;
 }
 
-static void s6tuum1_display_on_work(struct work_struct *work)
-{
-	struct s6tuum1 *priv = container_of(to_delayed_work(work),
-					    struct s6tuum1, display_on_work);
-	int ret;
-
-	ret = priv->desc->enable(priv);
-	if (ret < 0)
-		dev_err(&priv->dsi->dev, "display-on failed: %d\n", ret);
-}
-
 static int s6tuum1_enable(struct drm_panel *panel)
 {
 	struct s6tuum1 *priv = to_s6tuum1(panel);
@@ -390,17 +362,12 @@ static int s6tuum1_enable(struct drm_panel *panel)
 	if (priv->adopted)
 		return priv->desc->set_refresh(priv);
 
-	if (!priv->desc->display_on_delay_ms)
-		return priv->desc->enable(priv);
-
 	/*
-	 * The first frame is kicked off after this callback returns and is
-	 * transferred on the next TE. Light the panel once it has landed.
+	 * Display-on goes out here, ahead of the first frame. Stock defers it
+	 * until that frame has landed (samsung,delayed-display-on); that is
+	 * not implemented.
 	 */
-	schedule_delayed_work(&priv->display_on_work,
-			      msecs_to_jiffies(priv->desc->display_on_delay_ms));
-
-	return 0;
+	return priv->desc->enable(priv);
 }
 
 static int s6tuum1_disable(struct drm_panel *panel)
@@ -408,11 +375,21 @@ static int s6tuum1_disable(struct drm_panel *panel)
 	struct s6tuum1 *priv = to_s6tuum1(panel);
 	struct mipi_dsi_multi_context ctx = { .dsi = priv->dsi };
 
-	cancel_delayed_work_sync(&priv->display_on_work);
-
 	mipi_dsi_dcs_set_display_off_multi(&ctx);
 	mipi_dsi_dcs_enter_sleep_mode_multi(&ctx);
 	mipi_dsi_msleep(&ctx, 100);	/* stock display_off wait */
+
+	/*
+	 * tcon_rdy drops once sleep-in has taken effect. A TCON adopted from
+	 * the bootloader can ignore both commands and stay lit; after a reset
+	 * it takes sleep-in.
+	 */
+	if (priv->desc->keep_power && s6tuum1_tcon_ready(priv)) {
+		priv->desc->reset(priv);
+		s6tuum1_wait_tcon_ready(priv);
+		mipi_dsi_dcs_enter_sleep_mode_multi(&ctx);
+		mipi_dsi_msleep(&ctx, 100);
+	}
 
 	return ctx.accum_err;
 }
@@ -425,8 +402,13 @@ static int s6tuum1_unprepare(struct drm_panel *panel)
 	 * Cutting only the panel supply left this panel driving a bright
 	 * white field; stock leaves it powered in sleep-in.
 	 */
-	if (priv->desc->keep_power)
+	if (priv->desc->keep_power) {
+		/* tcon_rdy drops once sleep-in has taken effect. */
+		if (s6tuum1_tcon_ready(priv))
+			dev_warn(&priv->dsi->dev,
+				 "TCON still ready after sleep-in, panel may be lit\n");
 		return 0;
+	}
 
 	return s6tuum1_power_off(priv);
 }
@@ -503,8 +485,6 @@ static const struct s6tuum1_panel_desc s6tuum1_amsa46_desc = {
 	.slice_height = 132,
 	.default_brightness = 0x5d8,
 	.max_brightness = 0x7ff,
-	/* The TE wait plus one frame transfer, with margin: six 8.3 ms frames. */
-	.display_on_delay_ms = 50,
 	.keep_power = true,
 };
 
@@ -573,7 +553,6 @@ static int s6tuum1_probe(struct mipi_dsi_device *dsi)
 
 	/* The bootloader leaves a keep-power panel running at handoff. */
 	priv->boot_on = priv->desc->keep_power;
-	INIT_DELAYED_WORK(&priv->display_on_work, s6tuum1_display_on_work);
 
 	priv->vdd = devm_regulator_get(dev, "vdd");
 	if (IS_ERR(priv->vdd))
@@ -633,7 +612,6 @@ static void s6tuum1_remove(struct mipi_dsi_device *dsi)
 
 	mipi_dsi_detach(dsi);
 	drm_panel_remove(&priv->panel);
-	cancel_delayed_work_sync(&priv->display_on_work);
 }
 
 static const struct of_device_id s6tuum1_of_match[] = {
