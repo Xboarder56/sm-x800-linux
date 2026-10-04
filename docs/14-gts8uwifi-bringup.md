@@ -151,8 +151,38 @@ by eye.
 Kernel package `7.2-r69` enables the microSD slot from the stock
 `sdhci@8804000` description: PM8350C L9C for the card, L6C for its I/O and
 card detect on GPIO92, active low. A 64 GB card enumerates as SDR104 with the
-I/O rail at 1.8 V and reads at 57-62 MB/s without errors. Writes, hotplug and
-other cards are untested.
+I/O rail at 1.8 V and reads at 57-62 MB/s without errors. A 3 GB image
+written at 33 MB/s read back identical. Hotplug and other cards are untested.
+
+The same card now carries a postmarketOS console root filesystem, so UFS and
+Android stay untouched. BOOT is still the debug-shell image; the initramfs
+finds `pmOS_boot` and `pmOS_root` by label, which exist only on the card, and
+`pmos_continue_boot` from the USB shell switches to it. The first boot grew
+the root filesystem to the 57 GB partition and reached multi-user in 92 s of
+userspace, most of it a wait for a serial device described below.
+
+Notes for repeating it:
+
+- `pmbootstrap install` cannot finish in the Docker builder: the loop
+  partition nodes never appear. The root filesystem it builds first is
+  complete, so the two filesystems were made from it with `mke2fs -d`
+  (ext2 `pmOS_boot` from `/boot`, ext4 `pmOS_root` from the rest), written to
+  a GPT made with `parted` in the debug shell, and verified by SHA-256.
+- The serial link moves tens of MB/s but corrupted a single 484 MB transfer;
+  48 MB pieces, each checksummed, were reliable.
+- The initramfs removes its ACM function when it leaves the debug shell.
+  A unit on the card adds `acm.usb0` back to the `g1` gadget before
+  `serial-getty@ttyGS0`. macOS binds the NCM function but never gives it an
+  interface name, so the serial login is the only way in from a Mac.
+- The debug image's payload audit rejects root filesystem UUIDs on the
+  command line by design; label lookup needs none.
+- A small sysrq "deadman" started before `pmos_continue_boot` reboots into
+  the debug shell if the card's system does not bring the login back.
+- `rmtfs` is masked on the card: it would open the modem storage partitions
+  on UFS.
+
+These pieces are local to `root-build/`; the X900 device package does not
+carry a gadget service, firmware extractor or sensor configuration yet.
 
 Kernel package `7.2-r70` takes the ADSP and the SLPI sensor hub out of the
 quarantine. The X900 stock reserved-memory regions (ADSP at `0x84500000`,
@@ -266,7 +296,7 @@ deferred.
 | Wireless | Wi-Fi association, throughput and 5/6 GHz; a Bluetooth address source and pairing; module and firmware packaging for an installed system. Scanning works on both radios. |
 | USB | Host networking/SSH, host mode, SuperSpeed and role changes. USB2 device serial works. |
 | Power | Charger/gauge and battery readings, thermal sensors, idle consumption and system suspend/resume. |
-| Storage/system | UFS filesystem operation, an installed rootfs and normal userspace boot; microSD writes and hotplug. UFS enumeration and microSD reads work. |
+| Storage/system | UFS filesystem operation and an installed rootfs on it; packaging the microSD boot (gadget service, image creation outside Docker); microSD hotplug. UFS enumeration works and a console rootfs boots from microSD. |
 | Audio | Amplifiers, speakers, microphones and routing on X900. |
 | Other hardware | Sensor readings (the SLPI boots; the registry tree, the patched `hexagonrpcd` and a firmware extractor for the X900 package are missing), cameras and fingerprint reader; audit inherited descriptions before enabling them. |
 | Portability | Transfer ABL's live RAM/reservations rather than assuming this DYDC/12 GiB layout for other firmware or capacities. |
