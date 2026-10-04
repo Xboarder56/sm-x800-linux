@@ -113,7 +113,7 @@ evidence in [display](../device-facts/gts8uwifi/display.md) and
   keeps it powered, which removes the flash.
 - **The standard tear-on command switched TE off**, so the DPU ran on its
   fallback timer. With the parameterless form the panel and DPU run at
-  120.8 Hz.
+  120.8 Hz. TE needs no tear-on at all on this panel; `7.2-r68` sends none.
 
 The Goodix GT6936 needed the Samsung 16-byte event parser, the X900 stock rail
 voltages, pull-ups on its bus and an orientation mapping to the landscape
@@ -138,10 +138,25 @@ world regulatory domain and no association was attempted. Bluetooth loads
 12 s discovery finds 83 devices. The X900 device package has no address
 helper or firmware dependencies yet, and the modules are not in the initramfs.
 
-Display off/on is **not** validated. fbdev blanking panics this kernel without
-a log a few seconds after the CRTC is disabled while fbcon is bound; detaching
-fbcon first avoids it. One wake from sleep-in then left the panel controller
-not ready. Reboot is unaffected. Avoid blanking the console on this image.
+Kernel package `7.2-r68` makes display off/on work. Through `7.2-r66` every
+wake failed its first frame and a few cycles reset the SoC without a log: the
+DPU kept its 500 MHz core clock while the display-off path dropped the
+matching MMCX vote. A one-hunk DPU patch keeps the vote until runtime suspend.
+The panel driver also stops sending sleep-out, which this TCON does not
+survive after a reset, and resets the TCON on every wake. Details and the
+measurements are in [display](../device-facts/gts8uwifi/display.md). The
+cycles were checked by TE, `tcon_rdy`, register reads and error counters, not
+by eye.
+
+`poweroff` with the USB cable attached comes straight back up: the bootloader
+powers the tablet on when a charger is present. Unplugged, it stays off and
+the power button starts it. No kernel change is involved; a PS_HOLD rewrite
+tried for this left the tablet needing power + volume-down and was dropped.
+
+The DTS ramoops region did not survive a reset on this tablet. Test images
+capture panics by pointing ramoops at Samsung's preserved debug memory from
+the command line: `ramoops.mem_address=0x800900000 ramoops.mem_size=0x200000
+ramoops.record_size=0x40000 ramoops.console_size=0x100000 ramoops.ecc=1`.
 
 ## Build and reproduce
 
@@ -225,7 +240,7 @@ deferred.
 
 | Area | Remaining work |
 |---|---|
-| Display | Display off/on: the fbcon-on-disabled-CRTC panic and the wake path from sleep-in, including stock's MAX77816 boost programming; brightness curve and HBM; 60 Hz switching; boots after an unclean reset. |
+| Display | A look at display off/on by eye; stock's delayed display-on and MAX77816 boost programming; the bootloader's varying handoff state; brightness curve and HBM; 60 Hz switching; boots after an unclean reset. |
 | Input | GT6936 pen/palm events, more than two contacts, suspend/resume and firmware update; X900 S Pen and pogo/cover keyboard; remaining buttons. |
 | Graphics | Adreno GPU firmware, GMU initialization and hardware acceleration. |
 | Wireless | Wi-Fi association, throughput and 5/6 GHz; a Bluetooth address source and pairing; module and firmware packaging for an installed system. Scanning works on both radios. |

@@ -1,11 +1,11 @@
 # SM-X900 revision 5: S6TUUM1 AMSA46AS01 evidence
 
-Updated, 2026-10-03. The inherited bootloader framebuffer produces a readable
+Updated, 2026-10-04. The inherited bootloader framebuffer produces a readable
 uniLoader/simpledrm console. **Native 2960x1848 display at 120 Hz reaches the
 postmarketOS debug screen on the attached DYDC tablet with a flash-free
-handoff** (kernel package `7.2-r63`). Display off/on is not validated. The
-60 Hz sections below record the earlier `7.2-r55` stage; the later sections
-supersede their open points.
+handoff** (kernel package `7.2-r63`), and **display off/on works** from
+`7.2-r68`, checked by log only. The 60 Hz sections below record the earlier
+`7.2-r55` stage; the later sections supersede their open points.
 The matching DYDC source files and hashes are recorded in
 [the bring-up checkpoint](../../docs/14-gts8uwifi-bringup.md).
 
@@ -133,6 +133,13 @@ isolated further. The driver now adopts the running panel on the first prepare
 and only sends the refresh select.
 `tcon_rdy` also goes low after sleep-in (`0x10`); low means asleep, not failed.
 
+What the bootloader hands over varies between boots. Seen so far: a running
+panel that takes commands (valid reads, `60 20` accepted); a running panel
+that ignores them (reads return `f0`, TE stays at 60 Hz, sleep-in ignored);
+and `tcon_rdy` low at the first prepare, 3.2 s into the kernel, in which case
+the driver resets and initialises the panel itself. The panel supply survives
+a reboot, so the state a previous session left can be what is adopted.
+
 **Supply cut at display-off.** Stock's always-on-touch path does not assert
 reset or drop the panel supply at display-off. Cutting only `panel_ldo_en`
 (GPIO34) with the other rails up left the panel driving a bright white,
@@ -149,6 +156,7 @@ same two TE shapes.
 | Bootloader state | 60.4 Hz, high for 8.3 ms per frame |
 | After the inherited `35 00` tear-on | no edges |
 | After `35` with no parameter | pulses restored |
+| After a reset, nothing sent | 60 Hz, high for about 8.3 ms per frame |
 | `60 20` | 120.9 Hz, about 0.1-0.23 ms pulses |
 | `60 00` | 60.4 Hz, high for 8.3 ms per frame |
 
@@ -156,8 +164,12 @@ With TE absent the DPU's tear-check counter free-runs at
 `vsync_clk / (vsync_count * 2 * vtotal)`: 60.5 Hz in the 120 Hz mode. Frame and
 "TE" interrupt counters still advance in that state, so they do not show that
 tearing sync works. DCS reads are valid after a full init (`0A` = `1c`, `52`
-returns the written brightness) but return `f0` in the adopted state, where
-writes still take effect.
+returns the written brightness). An adopted panel may return `f0` for every
+read instead; see the handoff states above.
+
+TE runs after reset without any tear-on, and stock sends none. The driver
+sent the parameterless form for the `7.2-r63` to `7.2-r66` packages and sends
+no tear-on from `7.2-r68`.
 
 The 120 Hz mode uses blanking chosen for the stock lane rate: h 48/32/58,
 v 16/8/16, 701,882 kHz. The DSI host derives 1,529 Mbit/s per lane, matching
@@ -178,15 +190,64 @@ values in place and they survived TCON resets and sleep here, so mainline does
 not drive the part yet. Its interrupt register showed a power-OK event after
 sleep/wake attempts.
 
-## Open: display off/on
+## Display off/on
 
-- Blanking through fbdev resets the tablet about 14 s later with no kernel
-  message, the signature of a panic followed by the test image's `panic=10`
-  reboot. Blanking with fbcon detached from the framebuffer survives.
-  Holding the UFS PHY rails or the display power domains on does not help.
-- A wake from sleep-in (reset, wait for `tcon_rdy`, init) left `tcon_rdy` low
-  again in the one attempt made. Stock sends no sleep-out (`0x11`) in this
-  path and reprograms the boost first; neither difference has been tested.
+Fixed in kernel package `7.2-r68`. Two independent faults were involved.
+
+**The DPU ran at 500 MHz without its MMCX vote.** When the last CRTC goes
+inactive, `dpu_core_perf_crtc_update()` passes a core clock rate of zero to
+`dev_pm_opp_set_rate()`. That drops the performance state vote but leaves the
+clock at 500 MHz, the rate this mode needs. The clock keeps running until
+runtime suspend and is ungated at 500 MHz again on runtime resume; the vote
+only returns at the first flush. Every wake's first frame failed
+(`frame done timeout`, DSI error status `c`), the following display-off
+logged `kickoff timeout` and `failed wait_for_idle`, and after a few cycles a
+wake reset the SoC with nothing logged. PMIC reset-reason registers after
+such a reset matched a clean reboot. The earlier "fbdev blank resets the
+tablet about 14 s later" belongs here too: it does not happen with the fix.
+
+Isolation: pinning only the core clock through the `core_perf` debugfs fixed
+mode, with the bus votes written back to their normal values, gave clean
+cycles; returning to normal mode failed on the first wake.
+`dpu-core-clk-keep-opp-vote.patch` skips the zero-rate update. The power
+domain still drops the vote across runtime suspend: MMCX reads performance
+state 64 with the display off and 256 with it on.
+
+**Sleep-out kills this TCON after a reset.** Replaying the init by hand,
+`0x11` after the reset pulse dropped `tcon_rdy` at once; every later command
+failed and reads returned `-EINVAL`. Stock sends no sleep-out. The same
+command sent to a running, initialised TCON changed nothing. The driver now
+sends the stock stream exactly: no sleep-out, no tear-on.
+
+The resulting cycle:
+
+| Step | Observation |
+|---|---|
+| Display-off (`28`, `10`, 100 ms) | `tcon_rdy` low, no TE edges; supply on, reset released |
+| Wake | reset, `tcon_rdy` high after 345-349 ms, stock stream, first-display-on, `29` |
+| After wake | TE 120 Hz, vblank 120.5-120.8 Hz, `0A` = `1c`, no display error |
+
+Checked by log on a workbench build of the r68 sources: 30 single cycles
+with TE, `tcon_rdy` and reads sampled after each wake, a further 37 cycles on
+error counters, DPMS cycles with fbcon bound, fbdev blank/unblank with fbcon
+bound, a zero-delay off/on, and the console's own blank timer from both an
+adopted and a self-initialised boot. Nobody was watching the panel for these.
+
+The driver resets on every prepare except the adopting one, even if the TCON
+still reports ready. If `tcon_rdy` is still high after sleep-in, which one
+adopted boot showed with the panel left lit, it resets the TCON and repeats
+sleep-in. That sequence was confirmed by hand (reset, then `10`: `tcon_rdy`
+low, TE stopped); the driver path itself has not fired on hardware since it
+was added.
+
+Still open:
+
+- Stock defers display-on until the first frame has landed. The driver sends
+  it ahead of that frame; what a wake looks like has not been checked by eye.
+- The MAX77816 boost is not reprogrammed before a reset as stock does.
+- An adopted panel in the command-ignoring state runs at 60 Hz until its
+  first off/on. Resetting at handoff would avoid that at the cost of a
+  blanked panel during TCON start-up.
+- System suspend/resume is untested.
 - Boots following an unclean reset sometimes start with bootloader-stage
-  artifacts. Normal reboots on the r63 package came up clean.
-
+  artifacts.
