@@ -250,6 +250,39 @@ of stopping at `0x980000000`: `MemTotal` rises from 6.5 to 10.6 GB. A 9.5 GB
 fill-and-verify in a tmpfs ran clean twice; see
 [memory](../device-facts/gts8uwifi/memory.md).
 
+Wi-Fi turned out to need Samsung's own firmware set. With linux-firmware's
+`WLAN.HSP.1.1` and its generic board entry the X900 associates on 2.4 GHz
+but hears nothing on 5 or 6 GHz and loses most of what it sends; with the
+stock `amss20.bin`, `m3.bin`, `regdb.bin` and `bdwlan.elf` it joins a 6 GHz
+160 MHz network with no failed transmissions and reconnects at boot. Three
+inherited rail floors that ran below stock (two of them WCN6855 rails) and the
+stock antenna-switch rail were corrected on the way; see
+[wireless](../device-facts/gts8uwifi/wireless.md).
+
+Plasma Desktop 6.7 runs from the microSD system (installed with `apk` from
+packages fetched in the builder, later directly over Wi-Fi). With the owner at
+the tablet on 2026-10-04: the login screen and desktop render in the right
+orientation, touch and the on-screen keyboard work, the desktop auto-rotates
+both ways with touch still aligned, the S Pen pointer sits under the tip, the
+brightness slider works, the speakers play a clean tone, and volume-up,
+volume-down and power all register. `kmscube` draws 74 frames per second at
+the native resolution. The owner saw a brief flash at the initramfs handoff
+and again as services start; it varies from boot to boot.
+
+The desktop is not stable yet. The Adreno's power controller intermittently
+stops answering (`HFI_H2F_MSG_GX_BW_PERF_VOTE ... timed out`, then
+`Timeout waiting for GMU OOB set GPU_SET`), the GPU hangs and the login screen
+or session can crash. Stable commit 51fcee9d4140 (in `7.2-r81`) and dropping
+`clk_ignore_unused pd_ignore_unused` each made it rarer, from tens of seconds
+to minutes of use; keeping the GPU out of runtime suspend avoids it. The root
+cause is open.
+
+Notes from the desktop work: a DRM client closing the last open file on the
+device, render node included, restores the fbdev console and wakes a blanked
+panel. `pmbootstrap install` normally copies the apk signing keys into the
+image; the hand-built image lacked them and `apk` rejected every index until
+they were copied in.
+
 `poweroff` with the USB cable attached comes straight back up: the bootloader
 powers the tablet on when a charger is present. Unplugged, it stays off and
 the power button starts it. No kernel change is involved; a PS_HOLD rewrite
@@ -343,9 +376,9 @@ deferred.
 | Area | Remaining work |
 |---|---|
 | Display | A look at display off/on by eye; stock's delayed display-on and MAX77816 boost programming; the bootloader's varying handoff state; brightness curve and HBM; 60 Hz switching; boots after an unclean reset. |
-| Input | GT6936 pen/palm events, more than two contacts, suspend/resume and firmware update; a hands-on check of the S Pen, the keyboard cover, volume-up and the hall switches, whose drivers all probe. |
-| Graphics | Rendering to the panel and a compositor on the Adreno 730; a packaged source for the zap shader on X900. The GPU initialises and Mesa reports FD730. |
-| Wireless | Wi-Fi association, throughput and 5/6 GHz; a Bluetooth address source and pairing; module and firmware packaging for an installed system. Scanning works on both radios. |
+| Input | GT6936 pen/palm events, more than two contacts, suspend/resume and firmware update; a keyboard cover and the hall switches changing state. Touch, the S Pen and all three keys work under Plasma. |
+| Graphics | The intermittent GMU timeout that hangs the GPU under a compositor; a packaged source for the zap shader on X900. Plasma renders on the Adreno 730 between hangs. |
+| Wireless | A way for the X900 package to obtain the stock Wi-Fi firmware set; throughput; a Bluetooth address source and pairing. Wi-Fi works on 6 GHz with the stock set. |
 | USB | Host networking/SSH, host mode, SuperSpeed and role changes. USB2 device serial works. |
 | Power | Enabling the charger and fuel gauge with the X900 battery data (audited in [power](../device-facts/gts8uwifi/power.md), not enabled), idle consumption and system suspend/resume. The bootloader's charger state keeps the battery full; SoC thermal zones and both thermistors read. |
 | Storage/system | UFS filesystem operation and an installed rootfs on it; packaging the microSD boot (gadget service, image creation outside Docker); microSD hotplug. UFS enumeration works and a console rootfs boots from microSD. |

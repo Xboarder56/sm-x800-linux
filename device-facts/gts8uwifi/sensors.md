@@ -80,8 +80,10 @@ possible.
 
 ## Not done
 
-- Nobody moved the tablet: other orientations, the hall switches changing
-  state and the volume key are unchecked.
+- The hall switches changing state are unchecked. Rotation was checked
+  later the same day: `monitor-sensor` reported left-up and back to normal as
+  the owner turned the tablet, and Plasma rotates the desktop to match in
+  both directions. Volume-up, volume-down and power registered presses.
 - The config files came from the firmware package on the host. The
   compressed ones needed `dump.f2fs`; Docker's kernel mounts the F2FS image
   but cannot read LZ4-compressed files.

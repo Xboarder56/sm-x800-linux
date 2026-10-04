@@ -54,8 +54,9 @@ on `DMIC4`/`DMIC5`.
 
 ## Not done
 
-- Nobody listened: distortion, rattle and how loud the cap is are unknown.
-  The speaker-protection firmware is not loaded, as on the X800.
+- The owner heard the -30 dBFS test tone at `Digital PCM Volume` 400 and
+  called it clean. Louder levels, music and rattle are unchecked. The
+  speaker-protection firmware is not loaded, as on the X800.
 - The X900 device package has no topology file, UCM profile or the
   amplifier no-hibernate rule; the test used the X800's topology under the
   Ultra's card name and set the mixer by hand.
