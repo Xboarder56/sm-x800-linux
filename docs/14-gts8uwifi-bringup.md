@@ -1,12 +1,12 @@
 # Galaxy Tab S8 Ultra Wi-Fi (SM-X900 / gts8uwifi): bring-up
 
-Status, 2026-10-03: **native 60 Hz display, USB2 ACM root shell, UFS discovery
-and the real postmarketOS initramfs debug shell work on the attached SM-X900**.
-Both initramfs stages run in RAM; the on-screen debug keyboard renders. The
-corrected memory map also passed a 512 MiB allocation/read-back check. An
-installed rootfs and input remain unfinished. Native display still flashes
-briefly during handoff; 120 Hz and power cycling are unvalidated. USERDATA
-has not been flashed.
+Status, 2026-10-03: **native 120 Hz display with a flash-free bootloader
+handoff, the Goodix touchscreen, USB2 ACM root shell, UFS discovery and the
+real postmarketOS initramfs debug shell work on the attached SM-X900**.
+Both initramfs stages run in RAM; the on-screen debug keyboard renders and
+takes touch input. The corrected memory map also passed a 512 MiB
+allocation/read-back check. An installed rootfs is unfinished, and display
+off/on is not usable yet. USERDATA has not been flashed.
 
 ## Hardware evidence
 
@@ -90,13 +90,47 @@ register dumps or a temporary geometry selector, gives the same visible result.
 See [the panel evidence](../device-facts/gts8uwifi/display.md) for commands,
 clock limits and validation.
 
-A short black/white flash at startup remains unresolved; this is not yet a
-seamless boot. Only 60 Hz is exposed. X800 hardware regression testing, panel
-power cycling and 120 Hz command-mode timing remain outstanding. USB and the
-RAM-based debug shell work; touchscreen input is still disabled. The BOOT
-image has SHA-256
+That stage flashed black/white at startup, exposed only 60 Hz and had no
+touch input. Its BOOT image has SHA-256
 `20b71cda0047c9eb8f037a1560d3623891cc20087d5c7c7713670e12023a48b0`;
 local captures are in `root-build/gts8uwifi-debug-r28-clean-panel/`.
+
+## Handoff, 120 Hz and touch stage
+
+Kernel package `7.2-r63` resolves the startup flash, runs the panel at 120 Hz
+and enables the touchscreen. Four findings were needed, each recorded with its
+evidence in [display](../device-facts/gts8uwifi/display.md) and
+[touch](../device-facts/gts8uwifi/touch.md):
+
+- **An inherited rail was outside the X900 stock range.** The X800's 3.0 V
+  always-on L13C is constrained to 1.8 V on X900 and has no stock consumer.
+  It is no longer driven; every other declared RPMh rail was audited against
+  the stock constraints.
+- **The bootloader's scanout faulted in the SMMU** as soon as MDSS joined its
+  IOMMU group. MDSS now keeps an identity domain until msm takes over.
+- **Stock never resets this panel while it is running** and never cuts its
+  supply at display-off. The driver now adopts the bootloader's panel and
+  keeps it powered, which removes the flash.
+- **The standard tear-on command switched TE off**, so the DPU ran on its
+  fallback timer. With the parameterless form the panel and DPU run at
+  120.8 Hz.
+
+The Goodix GT6936 needed the Samsung 16-byte event parser, the X900 stock rail
+voltages, pull-ups on its bus and an orientation mapping to the landscape
+display. The initramfs keyboard registers the key under the finger.
+
+The package-built image has BOOT SHA-256
+`8ce915940fae1af364d3f29d1f4b60a71e10b02933a25b1694c6d8f7417acac2`; captures
+are in `root-build/gts8uwifi-debug-r40-package-r63/`. The boot sequence,
+picture and keyboard input were confirmed by eye on a workbench build of the
+same sources and DTB. Three further boots of that build and the first boot of
+the package build then matched by log only: native framebuffer, 120.7-120.8 Hz
+vblank, touch registered, no SMMU fault or display error.
+
+Display off/on is **not** validated. fbdev blanking panics this kernel without
+a log a few seconds after the CRTC is disabled while fbcon is bound; detaching
+fbcon first avoids it. One wake from sleep-in then left the panel controller
+not ready. Reboot is unaffected. Avoid blanking the console on this image.
 
 ## Build and reproduce
 
@@ -174,9 +208,23 @@ tested on this tablet. The X800 restore archive is not an X900 recovery image.
 
 ## Unresolved
 
-Continue BOOT-only tests with the Goodix GT6936 touchscreen and display handoff,
-using the RAM-based postmarketOS debug shell. Keep charger,
-wireless and other peripherals as separate stages. Installed rootfs work is
-deferred; the on-screen keyboard currently has no validated touch input.
-Generalize live ABL memory/reservation transfer before supporting other
-firmware or RAM sizes.
+Touch, the startup flash and 120 Hz are resolved for boot. Work continues with
+BOOT-only tests and the RAM-based debug shell; installed rootfs work is
+deferred.
+
+| Area | Remaining work |
+|---|---|
+| Display | Display off/on: the fbcon-on-disabled-CRTC panic and the wake path from sleep-in, including stock's MAX77816 boost programming; brightness curve and HBM; 60 Hz switching; boots after an unclean reset. |
+| Input | GT6936 pen/palm events, more than two contacts, suspend/resume and firmware update; X900 S Pen and pogo/cover keyboard; remaining buttons. |
+| Graphics | Adreno GPU firmware, GMU initialization and hardware acceleration. |
+| Wireless | X900 Wi-Fi and Bluetooth wiring/firmware, connectivity and recovery. |
+| USB | Host networking/SSH, host mode, SuperSpeed and role changes. USB2 device serial works. |
+| Power | Charger/gauge and battery readings, thermal sensors, idle consumption and system suspend/resume. |
+| Storage/system | UFS filesystem operation, microSD, an installed rootfs and normal userspace boot. UFS enumeration works. |
+| Audio | Amplifiers, speakers, microphones and routing on X900. |
+| Other hardware | Sensors, cameras and fingerprint reader; audit inherited descriptions before enabling them. |
+| Portability | Transfer ABL's live RAM/reservations rather than assuming this DYDC/12 GiB layout for other firmware or capacities. |
+| Submission | Kernel bindings and `dtbs_check`, removal of remaining bring-up workarounds, X800 hardware regression and separate Linux/uniLoader/pmaports submissions. |
+
+These are functional milestones, not claims that dormant DTS nodes already
+support the corresponding X900 hardware.

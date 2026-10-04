@@ -1,9 +1,11 @@
 # SM-X900 revision 5: S6TUUM1 AMSA46AS01 evidence
 
 Updated, 2026-10-03. The inherited bootloader framebuffer produces a readable
-uniLoader/simpledrm console. **Native 2960x1848 display at 60 Hz also reaches
-the postmarketOS debug screen on the attached DYDC tablet**. A brief black/white
-flash during handoff remains; 120 Hz and display power cycling are unvalidated.
+uniLoader/simpledrm console. **Native 2960x1848 display at 120 Hz reaches the
+postmarketOS debug screen on the attached DYDC tablet with a flash-free
+handoff** (kernel package `7.2-r63`). Display off/on is not validated. The
+60 Hz sections below record the earlier `7.2-r55` stage; the later sections
+supersede their open points.
 The matching DYDC source files and hashes are recorded in
 [the bring-up checkpoint](../../docs/14-gts8uwifi-bringup.md).
 
@@ -93,3 +95,98 @@ The BOOT-only image has SHA-256
 `20b71cda0047c9eb8f037a1560d3623891cc20087d5c7c7713670e12023a48b0`.
 Build, memory/payload audits and USB captures remain local in
 `root-build/gts8uwifi-debug-r28-clean-panel/` and `root-build/kernel-r55/`.
+
+## Vendor driver reference
+
+The Samsung kernel source for this tablet family is public
+(`Samsung_Kernel_sm8450_common_gts8x`, `techpack/display/msm/`). The panel file
+`samsung/S6TUUM1_AMSA46AS01/ss_dsi_panel_S6TUUM1_AMSA46AS01.c`, `dsi/dsi_panel.c`
+and `dsi/dsi_clk_manager.c` were read for behaviour the stock DTB does not
+describe. A local copy is kept under `root-build/vendor-display-src/`.
+
+## Bootloader handoff
+
+Three separate effects produced the startup flash and intermittent dark boots.
+
+**SMMU faults.** ABL leaves the DPU scanning the splash buffer out in command
+mode. Mainline has no identity-domain entry for `qcom,sm8450-mdss`, so every
+fetch faulted once MDSS joined its IOMMU group:
+
+```
+platform ae00000.display-subsystem: Adding to iommu group 6
+arm-smmu 15000000.iommu: Unhandled context fault: fsr=0x402, iova=0xb8e41200,
+  fsynr=0x700021, cbfrsynra=0x2800, cb=5
+```
+
+`arm-smmu-qcom-sm8450-mdss-identity.patch` gives MDSS an identity default
+domain; the DTS also marks the splash buffer as a reserved 1:1 region for
+kernels without it. With both, the group type reads `identity` and no fault
+is logged.
+
+**Warm reset of a running TCON.** Stock `tcon_prepare()` returns without
+resetting when cont-splash is active or `tcon_rdy` is already high. Mainline
+pulsed reset on the running panel at every boot. Of roughly fifteen such
+initialisations, about half ended with a dark panel while the DPU kept
+completing frames; where it was sampled, `tcon_rdy` had dropped within a
+second. Most of those ran with L13C still at 3.0 V and the cause was not
+isolated further. The driver now adopts the running panel on the first prepare
+and only sends the refresh select.
+`tcon_rdy` also goes low after sleep-in (`0x10`); low means asleep, not failed.
+
+**Supply cut at display-off.** Stock's always-on-touch path does not assert
+reset or drop the panel supply at display-off. Cutting only `panel_ldo_en`
+(GPIO34) with the other rails up left the panel driving a bright white,
+purple-tinged field, the earlier "extremely white screen". The X900 variant
+now stays powered with reset released.
+
+## Tearing effect and 120 Hz
+
+Polling GPIO86 directly gave the following; the vendor driver documents the
+same two TE shapes.
+
+| State | TE on GPIO86 |
+|---|---|
+| Bootloader state | 60.4 Hz, high for 8.3 ms per frame |
+| After the inherited `35 00` tear-on | no edges |
+| After `35` with no parameter | pulses restored |
+| `60 20` | 120.9 Hz, about 0.1-0.23 ms pulses |
+| `60 00` | 60.4 Hz, high for 8.3 ms per frame |
+
+With TE absent the DPU's tear-check counter free-runs at
+`vsync_clk / (vsync_count * 2 * vtotal)`: 60.5 Hz in the 120 Hz mode. Frame and
+"TE" interrupt counters still advance in that state, so they do not show that
+tearing sync works. DCS reads are valid after a full init (`0A` = `1c`, `52`
+returns the written brightness) but return `f0` in the adopted state, where
+writes still take effect.
+
+The 120 Hz mode uses blanking chosen for the stock lane rate: h 48/32/58,
+v 16/8/16, 701,882 kHz. The DSI host derives 1,529 Mbit/s per lane, matching
+stock's 1,530. Measured with the r63 package: vblank 120.8 Hz, 120.4 completed
+frames per second under continuous fbdev updates, no underrun or frame-done
+timeout.
+
+## Rails and the display boost
+
+Stock constrains PM8350C L13C to 1.8 V on X900 and lists no active consumer.
+The X800-derived tree held it at 3.0 V; it is now described at 1.8 V and left
+in its bootloader state. What it feeds on this board is unknown.
+
+Stock programs a MAX77816 buck-boost at I2C 0x18 on `i2c@998000` before each
+panel reset: register `0x03 = 0x70` (enable, GPIO function off) and
+`0x02 = 0x8e` (3.1 A limit), "to reduce the voltage drop". ABL leaves those
+values in place and they survived TCON resets and sleep here, so mainline does
+not drive the part yet. Its interrupt register showed a power-OK event after
+sleep/wake attempts.
+
+## Open: display off/on
+
+- Blanking through fbdev resets the tablet about 14 s later with no kernel
+  message, the signature of a panic followed by the test image's `panic=10`
+  reboot. Blanking with fbcon detached from the framebuffer survives.
+  Holding the UFS PHY rails or the display power domains on does not help.
+- A wake from sleep-in (reset, wait for `tcon_rdy`, init) left `tcon_rdy` low
+  again in the one attempt made. Stock sends no sleep-out (`0x11`) in this
+  path and reprograms the boost first; neither difference has been tested.
+- Boots following an unclean reset sometimes start with bootloader-stage
+  artifacts. Normal reboots on the r63 package came up clean.
+
