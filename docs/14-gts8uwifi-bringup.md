@@ -238,6 +238,13 @@ reset on 97 and its supply switch on 70, as in the stock X900 node
 (`EF-DX900`). The driver probes and reports no cover attached. No keyboard
 cover has been attached under Linux yet.
 
+Kernel package `7.2-r76` enables audio: the four CS35L45 amplifiers, the VA
+macro and the sound card, whose stock wiring equals the X800's. Each
+amplifier was played alone at low level and picked up by the microphones,
+left pair on the left channel and right pair on the right, and three
+microphones answer. The measurements are in
+[audio](../device-facts/gts8uwifi/audio.md). Nobody has listened to it.
+
 `poweroff` with the USB cable attached comes straight back up: the bootloader
 powers the tablet on when a charger is present. Unplugged, it stays off and
 the power button starts it. No kernel change is involved; a PS_HOLD rewrite
@@ -337,7 +344,7 @@ deferred.
 | USB | Host networking/SSH, host mode, SuperSpeed and role changes. USB2 device serial works. |
 | Power | Enabling the charger and fuel gauge with the X900 battery data (audited in [power](../device-facts/gts8uwifi/power.md), not enabled), idle consumption and system suspend/resume. The bootloader's charger state keeps the battery full; SoC thermal zones and both thermistors read. |
 | Storage/system | UFS filesystem operation and an installed rootfs on it; packaging the microSD boot (gadget service, image creation outside Docker); microSD hotplug. UFS enumeration works and a console rootfs boots from microSD. |
-| Audio | Amplifiers, speakers, microphones and routing on X900. |
+| Audio | A listening check; a topology file, UCM profile and amplifier rule in the X900 package; speaker protection; 4-slot TDM. Speakers and microphones work by measurement. |
 | Other hardware | Packaging the sensor stack for X900 (daemon, udev rules, mount matrix, extractor, per-device revision) and a hands-on check of orientation, hall switches and keys; Wi-Fi thermistor conversion; cameras and fingerprint reader. Sensors read through the SLPI on a hand-assembled tree. |
 | Portability | Transfer ABL's live RAM/reservations rather than assuming this DYDC/12 GiB layout for other firmware or capacities. |
 | Submission | Kernel bindings and `dtbs_check`, removal of remaining bring-up workarounds, X800 hardware regression and separate Linux/uniLoader/pmaports submissions. |

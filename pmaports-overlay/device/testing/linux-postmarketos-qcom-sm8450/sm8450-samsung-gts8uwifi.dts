@@ -2230,12 +2230,10 @@
  * once they booted the X900 stock images: the stock reserved-memory regions
  * and the L2C sensor rail match the description above, and stock holds no
  * second sensor rail on this board. The GPU left it once it initialised
- * with the X900 stock zap shader.
+ * with the X900 stock zap shader. Audio left it once the four amplifiers
+ * and the microphones were measured: the stock amplifier, MI2S and DMIC
+ * wiring equals the description above.
  */
-&sound {
-	status = "disabled";
-};
-
 /* X800 camera descriptions are intentionally quarantined on X900 R1. */
 &camss {
 	status = "disabled";
@@ -2262,9 +2260,7 @@
  * mode only. No charger reference keeps the Type-C driver's PD requests at
  * 5 V; no VBUS regulator reference can enable the OTG boost. Charger and
  * gauge setup remain disabled until their X900 battery data is validated.
- * The amplifiers and the VA macro wait for the audio bring-up stage.
  */
-&i2c4 { status = "disabled"; };
 &i2c5 {
 	status = "okay";
 
@@ -2290,7 +2286,6 @@
 
 	fuel-gauge@36 { status = "disabled"; };
 };
-&vamacro { status = "disabled"; };
 &usb_1_dwc3_hs { /delete-property/ remote-endpoint; };
 &max77705_typec_hs { /delete-property/ remote-endpoint; };
 
