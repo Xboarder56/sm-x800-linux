@@ -21,8 +21,8 @@
  * AMSA46AS01 adds the Galaxy Tab S8 Ultra's 2960x1848 landscape raster,
  * DSC 1.1 at 8 bpp with two 1480x132 slices per line, and its distinct
  * power/reset and command sequence. See device-facts/gts8uwifi/display.md
- * for the stock CYB1/DYDC derivation. The X900 path currently implements
- * 60 Hz; the existing AMSA24VU01 sequence and timing are retained separately.
+ * for the stock CYB1/DYDC derivation. The X900 path runs at 120 Hz; the
+ * existing AMSA24VU01 sequence and timing are retained separately.
  */
 
 #include <linux/backlight.h>
@@ -32,12 +32,15 @@
 #include <linux/of.h>
 #include <linux/regulator/consumer.h>
 #include <linux/property.h>
+#include <linux/workqueue.h>
 
 #include <drm/display/drm_dsc.h>
 #include <drm/display/drm_dsc_helper.h>
 #include <drm/drm_mipi_dsi.h>
 #include <drm/drm_probe_helper.h>
 #include <drm/drm_panel.h>
+
+#include <video/mipi_display.h>
 
 struct s6tuum1;
 
@@ -46,10 +49,23 @@ struct s6tuum1_panel_desc {
 	void (*reset)(struct s6tuum1 *priv);
 	int (*on)(struct s6tuum1 *priv);
 	int (*enable)(struct s6tuum1 *priv);
+	int (*set_refresh)(struct s6tuum1 *priv);
 	unsigned int slice_width;
 	unsigned int slice_height;
 	unsigned int default_brightness;
 	unsigned int max_brightness;
+	/*
+	 * Stock samsung,delayed-display-on: display-on follows the first
+	 * frame, so the panel never scans out its post-reset frame memory.
+	 * Zero sends display-on directly from the enable callback.
+	 */
+	unsigned int display_on_delay_ms;
+	/*
+	 * Stock always-on-touch policy: display-off only sends display-off
+	 * and sleep-in. The panel supply stays on and reset is never asserted
+	 * while the TCON reports ready, including at the bootloader handoff.
+	 */
+	bool keep_power;
 };
 
 struct s6tuum1 {
@@ -60,6 +76,12 @@ struct s6tuum1 {
 	struct gpio_desc *tcon_rdy_gpio;
 	struct regulator *vdd;
 	const struct s6tuum1_panel_desc *desc;
+	struct delayed_work display_on_work;
+	bool powered;
+	/* The bootloader's panel state has not been replaced yet. */
+	bool boot_on;
+	/* The running bootloader state was adopted without a reset. */
+	bool adopted;
 };
 
 static inline struct s6tuum1 *to_s6tuum1(struct drm_panel *panel)
@@ -184,11 +206,11 @@ static int s6tuum1_amsa24_on(struct s6tuum1 *priv)
 }
 
 /*
- * AMSA46AS01 stock 60 Hz qcom,mdss-dsi-on-command. The 88-byte PPS is
+ * AMSA46AS01 stock qcom,mdss-dsi-on-command. The 88-byte PPS is
  * copied verbatim from the X900 rev-5 stock DTB (CYB1 and DYDC match).
  * See device-facts/gts8uwifi/display.md for provenance. Samsung sends compression
- * mode before the PPS, then selects 60 Hz with 0x60 = 0x00 and a 50 ms
- * post-write delay.
+ * mode before the PPS. The stock 60 Hz and 120 Hz streams differ only in
+ * the refresh select, 0x60 = 0x00 or 0x20, with a 50 ms post-write delay.
  */
 static int s6tuum1_amsa46_on(struct s6tuum1 *priv)
 {
@@ -218,21 +240,46 @@ static int s6tuum1_amsa46_on(struct s6tuum1 *priv)
 	mipi_dsi_dcs_write_seq_multi(&ctx, 0x68, 0x14);
 	mipi_dsi_dcs_write_seq_multi(&ctx, 0x51, 0xff, 0x07);
 	mipi_dsi_dcs_write_seq_multi(&ctx, 0x53, 0x20);
-	mipi_dsi_dcs_write_seq_multi(&ctx, 0x60, 0x00);
+	if (drm_mode_vrefresh(priv->desc->mode) == 120)
+		mipi_dsi_dcs_write_seq_multi(&ctx, 0x60, 0x20);
+	else
+		mipi_dsi_dcs_write_seq_multi(&ctx, 0x60, 0x00);
 	mipi_dsi_msleep(&ctx, 50);
 	mipi_dsi_dcs_write_seq_multi(&ctx, 0x86, 0x00, 0x03);
 	mipi_dsi_dcs_write_seq_multi(&ctx, 0x68, 0x19);
 	mipi_dsi_dcs_write_seq_multi(&ctx, 0xb0, 0x00, 0xc3, 0xb3);
 	mipi_dsi_dcs_write_seq_multi(&ctx, 0xb3, 0x0d);
 
-	mipi_dsi_dcs_set_tear_on_multi(&ctx, MIPI_DSI_DCS_TEAR_MODE_VBLANK);
+	/*
+	 * This TCON takes tear-on without a parameter. The standard two-byte
+	 * form switched TE off altogether, leaving the DPU on its free-running
+	 * vsync fallback at half the panel rate. Stock sends no tear-on here;
+	 * the parameterless form restores the 230 us pulse per 8.3 ms frame.
+	 */
+	mipi_dsi_dcs_write_seq_multi(&ctx, MIPI_DCS_SET_TEAR_ON);
 
 	return ctx.accum_err;
 }
 
+static bool s6tuum1_tcon_ready(struct s6tuum1 *priv)
+{
+	return priv->tcon_rdy_gpio &&
+	       gpiod_get_value_cansleep(priv->tcon_rdy_gpio);
+}
+
+static int s6tuum1_power_off(struct s6tuum1 *priv)
+{
+	gpiod_set_value_cansleep(priv->reset_gpio, 0);
+	/* stock supply entry: 15 ms pre-off */
+	usleep_range(15000, 16000);
+	priv->powered = false;
+	return regulator_disable(priv->vdd);
+}
+
 /*
  * Historical X800 bring-up note, retained for the takeover investigation.
- * The current prepare path cold-initializes the selected panel variant.
+ * The current prepare path cold-initializes the AMSA24VU01; a keep-power
+ * panel is adopted from the bootloader instead, as described in prepare.
  *
  * TAKEOVER EXPERIMENT (r34): across r30-r33 the panel emitted exactly 7 TE
  * pulses and then went permanently silent, regardless of init variations
@@ -248,19 +295,40 @@ static int s6tuum1_prepare(struct drm_panel *panel)
 	struct s6tuum1 *priv = to_s6tuum1(panel);
 	int ret;
 
-	ret = regulator_enable(priv->vdd);
-	if (ret < 0)
-		return ret;
+	if (!priv->powered) {
+		ret = regulator_enable(priv->vdd);
+		if (ret < 0)
+			return ret;
+		priv->powered = true;
 
-	/* stock supply entry: 11 ms post-on */
-	usleep_range(11000, 12000);
-	priv->desc->reset(priv);
-	s6tuum1_wait_tcon_ready(priv);
+		/* stock supply entry: 11 ms post-on */
+		usleep_range(11000, 12000);
+	}
+
+	priv->adopted = false;
+	if (priv->desc->keep_power && s6tuum1_tcon_ready(priv)) {
+		/*
+		 * Stock tcon_prepare() skips the reset while tcon_rdy is high
+		 * and adopts the bootloader's panel untouched. A warm reset
+		 * here flashed the panel and intermittently left the TCON
+		 * dropping its ready line within a second of the init
+		 * sequence.
+		 */
+		if (priv->boot_on) {
+			priv->boot_on = false;
+			priv->adopted = true;
+			return 0;
+		}
+	} else {
+		priv->desc->reset(priv);
+		s6tuum1_wait_tcon_ready(priv);
+	}
+	priv->boot_on = false;
 
 	ret = priv->desc->on(priv);
 	if (ret < 0) {
-		gpiod_set_value_cansleep(priv->reset_gpio, 0);
-		regulator_disable(priv->vdd);
+		if (!priv->desc->keep_power)
+			s6tuum1_power_off(priv);
 		return ret;
 	}
 
@@ -290,17 +358,57 @@ static int s6tuum1_amsa46_enable(struct s6tuum1 *priv)
 	return ctx.accum_err;
 }
 
+/* Stock samsung,vrr_tx_cmds: refresh select on an already running panel. */
+static int s6tuum1_amsa46_set_refresh(struct s6tuum1 *priv)
+{
+	struct mipi_dsi_multi_context ctx = { .dsi = priv->dsi };
+
+	if (drm_mode_vrefresh(priv->desc->mode) == 120)
+		mipi_dsi_dcs_write_seq_multi(&ctx, 0x60, 0x20);
+	else
+		mipi_dsi_dcs_write_seq_multi(&ctx, 0x60, 0x00);
+
+	return ctx.accum_err;
+}
+
+static void s6tuum1_display_on_work(struct work_struct *work)
+{
+	struct s6tuum1 *priv = container_of(to_delayed_work(work),
+					    struct s6tuum1, display_on_work);
+	int ret;
+
+	ret = priv->desc->enable(priv);
+	if (ret < 0)
+		dev_err(&priv->dsi->dev, "display-on failed: %d\n", ret);
+}
+
 static int s6tuum1_enable(struct drm_panel *panel)
 {
 	struct s6tuum1 *priv = to_s6tuum1(panel);
 
-	return priv->desc->enable(priv);
+	/* An adopted panel is already lit; only select the refresh rate. */
+	if (priv->adopted)
+		return priv->desc->set_refresh(priv);
+
+	if (!priv->desc->display_on_delay_ms)
+		return priv->desc->enable(priv);
+
+	/*
+	 * The first frame is kicked off after this callback returns and is
+	 * transferred on the next TE. Light the panel once it has landed.
+	 */
+	schedule_delayed_work(&priv->display_on_work,
+			      msecs_to_jiffies(priv->desc->display_on_delay_ms));
+
+	return 0;
 }
 
 static int s6tuum1_disable(struct drm_panel *panel)
 {
 	struct s6tuum1 *priv = to_s6tuum1(panel);
 	struct mipi_dsi_multi_context ctx = { .dsi = priv->dsi };
+
+	cancel_delayed_work_sync(&priv->display_on_work);
 
 	mipi_dsi_dcs_set_display_off_multi(&ctx);
 	mipi_dsi_dcs_enter_sleep_mode_multi(&ctx);
@@ -313,10 +421,14 @@ static int s6tuum1_unprepare(struct drm_panel *panel)
 {
 	struct s6tuum1 *priv = to_s6tuum1(panel);
 
-	gpiod_set_value_cansleep(priv->reset_gpio, 0);
-	/* stock supply entry: 15 ms pre-off */
-	usleep_range(15000, 16000);
-	return regulator_disable(priv->vdd);
+	/*
+	 * Cutting only the panel supply left this panel driving a bright
+	 * white field; stock leaves it powered in sleep-in.
+	 */
+	if (priv->desc->keep_power)
+		return 0;
+
+	return s6tuum1_power_off(priv);
 }
 
 /* Stock 120 Hz timing: porches h 64/48/64 (fp/bp/pw), v 48/48/64 */
@@ -336,21 +448,29 @@ static const struct drm_display_mode s6tuum1_amsa24_mode = {
 };
 
 /*
- * AMSA46AS01 stock 60 Hz: h and v fp/pw/bp 200/200/200.
- * The 120 Hz command-mode transfer timing needs a separate mainline
- * translation: treating its stock porches as video blanking exceeds the
- * 500 MHz DPU clock limit. See device-facts/gts8uwifi/display.md.
+ * AMSA46AS01 120 Hz. This is a command-mode panel: the blanking below is
+ * never scanned out, it only sets the link rate the DSI host derives from
+ * the mode. Stock describes both rates with 200/200/200 porches (v front
+ * porch 192 at 120 Hz) plus a separate 1530 Mbit/s lane rate and 7533 us
+ * transfer time; taken as video blanking those porches give a 1042 MHz
+ * mode at 120 Hz, which the DPU rejects against its 500 MHz core clock
+ * limit.
+ *
+ * Choose the blanking for the stock lane rate instead. DSC at 8 bpp
+ * carries 987 compressed pixels per line, so the host computes
+ * (987 + 138) * 1888 * 120 * 24 / 4 = 1529 Mbit/s per lane, the same
+ * derivation that yields 1528 Mbit/s from the AMSA24VU01 stock porches.
  */
 static const struct drm_display_mode s6tuum1_amsa46_mode = {
-	.clock = (2960 + 200 + 200 + 200) * (1848 + 200 + 200 + 200) * 60 / 1000,
+	.clock = (2960 + 48 + 32 + 58) * (1848 + 16 + 8 + 16) * 120 / 1000,
 	.hdisplay = 2960,
-	.hsync_start = 2960 + 200,
-	.hsync_end = 2960 + 200 + 200,
-	.htotal = 2960 + 200 + 200 + 200,
+	.hsync_start = 2960 + 48,
+	.hsync_end = 2960 + 48 + 32,
+	.htotal = 2960 + 48 + 32 + 58,
 	.vdisplay = 1848,
-	.vsync_start = 1848 + 200,
-	.vsync_end = 1848 + 200 + 200,
-	.vtotal = 1848 + 200 + 200 + 200,
+	.vsync_start = 1848 + 16,
+	.vsync_end = 1848 + 16 + 8,
+	.vtotal = 1848 + 16 + 8 + 16,
 	.width_mm = 313,
 	.height_mm = 196,
 	.type = DRM_MODE_TYPE_DRIVER | DRM_MODE_TYPE_PREFERRED,
@@ -378,10 +498,14 @@ static const struct s6tuum1_panel_desc s6tuum1_amsa46_desc = {
 	.reset = s6tuum1_amsa46_reset,
 	.on = s6tuum1_amsa46_on,
 	.enable = s6tuum1_amsa46_enable,
+	.set_refresh = s6tuum1_amsa46_set_refresh,
 	.slice_width = 1480,
 	.slice_height = 132,
 	.default_brightness = 0x5d8,
 	.max_brightness = 0x7ff,
+	/* The TE wait plus one frame transfer, with margin: six 8.3 ms frames. */
+	.display_on_delay_ms = 50,
+	.keep_power = true,
 };
 
 static int s6tuum1_get_modes(struct drm_panel *panel,
@@ -447,6 +571,10 @@ static int s6tuum1_probe(struct mipi_dsi_device *dsi)
 	if (!priv->desc)
 		return dev_err_probe(dev, -ENODEV, "missing panel descriptor\n");
 
+	/* The bootloader leaves a keep-power panel running at handoff. */
+	priv->boot_on = priv->desc->keep_power;
+	INIT_DELAYED_WORK(&priv->display_on_work, s6tuum1_display_on_work);
+
 	priv->vdd = devm_regulator_get(dev, "vdd");
 	if (IS_ERR(priv->vdd))
 		return dev_err_probe(dev, PTR_ERR(priv->vdd),
@@ -505,6 +633,7 @@ static void s6tuum1_remove(struct mipi_dsi_device *dsi)
 
 	mipi_dsi_detach(dsi);
 	drm_panel_remove(&priv->panel);
+	cancel_delayed_work_sync(&priv->display_on_work);
 }
 
 static const struct of_device_id s6tuum1_of_match[] = {
