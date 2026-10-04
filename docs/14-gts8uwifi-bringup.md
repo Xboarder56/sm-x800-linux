@@ -1,10 +1,11 @@
 # Galaxy Tab S8 Ultra Wi-Fi (SM-X900 / gts8uwifi): bring-up
 
-Status, 2026-10-03: **framebuffer console, USB2 ACM root shell, UFS discovery
+Status, 2026-10-03: **native 60 Hz display, USB2 ACM root shell, UFS discovery
 and the real postmarketOS initramfs debug shell work on the attached SM-X900**.
 Both initramfs stages run in RAM; the on-screen debug keyboard renders. The
 corrected memory map also passed a 512 MiB allocation/read-back check. An
-installed rootfs, native AMOLED takeover and input remain unfinished. USERDATA
+installed rootfs and input remain unfinished. Native display still flashes
+briefly during handoff; 120 Hz and power cycling are unvalidated. USERDATA
 has not been flashed.
 
 ## Hardware evidence
@@ -30,15 +31,16 @@ and firmware need their own live map; the excluded upper RAM remains untested.
 
 ## Validated first-boot stage
 
-The DTS enables UFS, fixed USB2 peripheral mode and ABL's existing framebuffer.
+The first-boot DTS enabled UFS, fixed USB2 peripheral mode and ABL's framebuffer.
 The 2960x1848 ARGB landscape framebuffer at `0xb8000000` produces readable
-uniLoader and Linux console output. Native MDSS/DSI, GPU, wireless, remote
-processors, input, pogo, audio and the MAX77705 charger/gauge remain disabled.
+uniLoader and Linux console output. Native MDSS/DSI was disabled at that stage;
+its subsequent enablement is described below. GPU, wireless, remote processors,
+input, pogo, audio and the MAX77705 charger/gauge remain disabled.
 The MFD and Type-C driver handle USB data routing in sink/device mode.
 Inherited dormant peripheral descriptions are preparation, not support claims.
 
 Kernel package `7.2-r51`, device package `0.1-r1` and uniLoader's console
-newline fix establish the current diagnostic stage. The image built directly
+newline fix established the framebuffer diagnostic stage. The image built directly
 from this checkout with the command below has BOOT SHA-256
 `121360005ac3f9ca4dd60459e89883ce8ba6976a482e816d7a3ef713fe8b6eee`;
 artifacts and its ACM capture are in `root-build/gts8uwifi-debug-r23-checkout/`.
@@ -75,8 +77,26 @@ and USB still alive; the tested stock capability word restores visible text
 (see the USB evidence). Minimal ramdisk edits also showed sensitivity to
 loader layout. The diagnostic recipe retains the original 1,919,488-byte
 raw-cpio slot; the full compressed initramfs now boots despite its larger
-layout. The framebuffer still depends on ABL scanout rather than native
+layout. That initial framebuffer depended on ABL scanout rather than native
 panel takeover.
+
+## Native display stage
+
+Kernel package `7.2-r55` enables MDSS/DSI and the AMSA46AS01 panel descriptor.
+Native `msmdrmfb` at 2960x1848 reaches the same postmarketOS debug screen and
+keyboard. X900's stock first-display commands restore output that remained
+black with the inherited X800 enable sequence. The clean driver, without
+register dumps or a temporary geometry selector, gives the same visible result.
+See [the panel evidence](../device-facts/gts8uwifi/display.md) for commands,
+clock limits and validation.
+
+A short black/white flash at startup remains unresolved; this is not yet a
+seamless boot. Only 60 Hz is exposed. X800 hardware regression testing, panel
+power cycling and 120 Hz command-mode timing remain outstanding. USB and the
+RAM-based debug shell work; touchscreen input is still disabled. The BOOT
+image has SHA-256
+`20b71cda0047c9eb8f037a1560d3623891cc20087d5c7c7713670e12023a48b0`;
+local captures are in `root-build/gts8uwifi-debug-r28-clean-panel/`.
 
 ## Build and reproduce
 
@@ -154,8 +174,8 @@ tested on this tablet. The X800 restore archive is not an X900 recovery image.
 
 ## Unresolved
 
-Continue BOOT-only tests with native AMOLED takeover and the Goodix GT6936
-touchscreen, using the RAM-based postmarketOS debug shell. Keep charger,
+Continue BOOT-only tests with the Goodix GT6936 touchscreen and display handoff,
+using the RAM-based postmarketOS debug shell. Keep charger,
 wireless and other peripherals as separate stages. Installed rootfs work is
 deferred; the on-screen keyboard currently has no validated touch input.
 Generalize live ABL memory/reservation transfer before supporting other

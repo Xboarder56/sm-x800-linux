@@ -2,8 +2,9 @@
 /*
  * Samsung Galaxy Tab S8 Ultra Wi-Fi (SM-X900), codename "gts8uwifi".
  *
- * EXPERIMENTAL: R11 confirms framebuffer console, USB2 ACM shell and UFS
- * discovery on X900. Native display and the other peripherals are untested.
+ * EXPERIMENTAL: framebuffer console, USB2 ACM shell and the postmarketOS
+ * initramfs work on X900. Native display is the current hardware test;
+ * the other peripheral descriptions remain disabled pending validation.
  * Stock source: DYDC Waipio v2 + GTS8UWIFI rev-5 overlay; see
  * device-facts/gts8uwifi/memory.md and display.md. The inherited X800
  * peripheral descriptions below are disabled pending their own audit.
@@ -1818,26 +1819,27 @@
  */
 /*
  * Native display: MSM DPU + DSI + our S6TUUM1 panel driver
- * (panel-samsung-s6tuum1.c). R1 leaves the native stack disabled and keeps
- * ABL's scanout alive through simpledrm; enable this block for the R2 panel
- * cold-init test after the core boot path is proven.
+ * (panel-samsung-s6tuum1.c). R1 left the native stack disabled and kept
+ * ABL's scanout alive through simpledrm. The core boot path and USB shell
+ * now work; enable this block for the AMSA46AS01 panel cold-init test.
  * Command mode, DSC 1.1. Wiring per sm8450-hdk; supplies per HDK (dsi vdda
  * = l6b 1.2 V, phy vdds = l5b 0.88 V — both already declared for UFS/USB).
  *
  * The simple-framebuffer chosen node stays: simpledrm carries the console
  * until msm probes, then the aperture helper evicts it and fbcon migrates
  * to the DRM device. If the panel driver fails, the screen goes dark but
- * WiFi ssh survives — and reverting to pure simpledrm is one status flip.
+ * the X800 tests used WiFi ssh for recovery; X900 uses its USB debug shell.
+ * Reverting to pure simpledrm is one status flip.
  * clk/pd_ignore_unused stay in bootargs until this path is proven.
  */
 &mdss {
-	/* R1: preserve ABL scanout through simpledrm; native KMS is R2. */
-	status = "disabled";
+	/* Native KMS test; retain the simpledrm fallback until msm binds. */
+	status = "okay";
 };
 
 &mdss_dsi0 {
 	vdda-supply = <&vreg_l6b_1p2>;
-	status = "disabled";
+	status = "okay";
 
 	panel: panel@0 {
 		compatible = "samsung,s6tuum1-amsa46as01";
@@ -1866,7 +1868,7 @@
 
 &mdss_dsi0_phy {
 	vdds-supply = <&vreg_l5b_0p88>;
-	status = "disabled";
+	status = "okay";
 };
 
 &pcie0 {
