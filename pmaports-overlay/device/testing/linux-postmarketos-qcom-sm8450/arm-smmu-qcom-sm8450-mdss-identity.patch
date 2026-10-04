@@ -1,0 +1,28 @@
+iommu/arm-smmu-qcom: keep SM8450 MDSS in an identity domain
+
+The bootloader leaves the SM8450 display controller scanning out its
+splash buffer. MDSS is absent from qcom_smmu_client_of_match, so the
+device gets a translating default domain as soon as it joins its IOMMU
+group and every fetch faults until the msm driver resets the block:
+
+  platform ae00000.display-subsystem: Adding to iommu group 6
+  arm-smmu 15000000.iommu: Unhandled context fault: fsr=0x402,
+    iova=0xb8e41200, fsynr=0x700021, cbfrsynra=0x2800, cb=5
+
+On the Galaxy Tab S8 Ultra this cuts the bootloader's command-mode
+scanout off mid-frame while simpledrm is still drawing the console. Add
+the compatible, as for the other MDSS generations, so the bootloader
+mapping survives until msm attaches its own domain.
+
+Generated from the pinned Linux 7.2 source. Not yet submitted upstream.
+
+--- a/drivers/iommu/arm/arm-smmu/arm-smmu-qcom.c
++++ b/drivers/iommu/arm/arm-smmu/arm-smmu-qcom.c
+@@ -425,6 +425,7 @@
+ 	{ .compatible = "qcom,sm6375-mdss" },
+ 	{ .compatible = "qcom,sm8150-mdss" },
+ 	{ .compatible = "qcom,sm8250-mdss" },
++	{ .compatible = "qcom,sm8450-mdss" },
+ 	{ .compatible = "qcom,x1e80100-mdss" },
+ 	{ }
+ };

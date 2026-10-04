@@ -483,9 +483,23 @@
 		 * The bootloader will only keep display hardware enabled
 		 * if this memory region is named exactly 'splash_region'
 		 */
-		splash-region@b8000000 {
+		splash_region: splash-region@b8000000 {
 			reg = <0x0 0xb8000000 0x0 0x2b00000>;
 			no-map;
+			/*
+			 * ABL leaves the DPU scanning this buffer out. Mainline's
+			 * SMMU driver has no identity-domain entry for
+			 * qcom,sm8450-mdss, so attaching MDSS to its default DMA
+			 * domain made every fetch fault ("Unhandled context fault
+			 * ... iova=0xb8..., SID=0x2800/0x2c00") until msm reset the
+			 * block, cutting the bootloader's scanout off mid-frame.
+			 * Keep the buffer mapped 1:1 for MDSS; see memory-region in
+			 * &mdss. arm-smmu can only install this mapping just after
+			 * the attach, so the kernel package also carries
+			 * arm-smmu-qcom-sm8450-mdss-identity.patch, which leaves no
+			 * window at all.
+			 */
+			iommu-addresses = <&mdss 0x0 0xb8000000 0x0 0x2b00000>;
 		};
 	};
 };
@@ -1842,6 +1856,9 @@
  * clk/pd_ignore_unused stay in bootargs until this path is proven.
  */
 &mdss {
+	/* Direct IOMMU mapping for ABL's scanout; see splash_region. */
+	memory-region = <&splash_region>;
+
 	/* Native KMS test; retain the simpledrm fallback until msm binds. */
 	status = "okay";
 };
