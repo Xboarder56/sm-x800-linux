@@ -215,6 +215,11 @@ platforms as freedreno FD730 with OpenGL 4.6 and OpenGL ES 3.2. No frame has
 been rendered to the panel: that test waits for someone to watch it. A DRM
 client closing its device restores the console and wakes a blanked panel.
 
+Kernel package `7.2-r72` enables the two thermistor ADC channels. The stock
+X900 state for the Wi-Fi thermistor puts pm8350 `gpio2` in high impedance,
+where the inherited X800 state named `gpio1`; with `gpio1` the channel read
+57-63 °C, with `gpio2` 31-32 °C beside the AP thermistor at 29 °C.
+
 `poweroff` with the USB cable attached comes straight back up: the bootloader
 powers the tablet on when a charger is present. Unplugged, it stays off and
 the power button starts it. No kernel change is involved; a PS_HOLD rewrite

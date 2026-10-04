@@ -69,8 +69,14 @@ orientation normal, tilt tilted-up, light 12 lux and a compass heading of
 
 `gpio-keys` with the inherited description registers and reports the cover
 switch open and the pen switch set. `ap_therm` reads 28.9 °C beside SoC zones
-at 29-32 °C. `wf_therm` reads 62.8 °C, which is not credible; stock converts
-both with its own tables rather than the generic 100 kΩ NTC curve.
+at 29-32 °C.
+
+`wf_therm` read 57-63 °C with the inherited pin state, which put pm8350
+`gpio1` in high impedance. The stock X900 state (`gpio2_adc_default`) names
+`gpio2`. With that pad in high impedance the channel reads 31.1-31.9 °C.
+Stock converts both channels with its own tables rather than the generic
+100 kΩ NTC curve, so a few degrees of difference from Android remain
+possible.
 
 ## Not done
 
@@ -88,4 +94,3 @@ both with its own tables rather than the generic 100 kΩ NTC curve.
 - The X900 device package carries none of this: no daemon dependency, udev
   rules, mount matrix or extractor. The tree above was built with a local
   copy of the X800 extractor in its `--sensors-from` mode.
-- `gpio-keys` and the ADC channels are still disabled in the tracked DTS.

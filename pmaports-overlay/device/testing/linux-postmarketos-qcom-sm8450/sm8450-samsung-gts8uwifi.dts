@@ -1264,9 +1264,13 @@
 		input-enable;
 	};
 
-	/* Wi-Fi thermistor on pm8350 gpio1, an analog input to the ADC. */
+	/*
+	 * Wi-Fi thermistor, an analog input to the ADC. The X900 rev-5 stock
+	 * state (gpio2_adc_default) puts pm8350 gpio2 in high impedance; the
+	 * inherited X800 state named gpio1.
+	 */
 	wf_therm_default: wf-therm-default-state {
-		pins = "gpio1";
+		pins = "gpio2";
 		function = "normal";
 		bias-high-impedance;
 	};
@@ -1274,7 +1278,8 @@
 
 /*
  * Thermistors (stock sec_thermistor@0/@1): 100 kOhm NTCs on pm8350
- * AMUX_THM1 (AP, next to the SoC) and pm8350 gpio1 (Wi-Fi), both read
+ * AMUX_THM1 (AP, next to the SoC) and the pm8350 GPIO1 ADC input (Wi-Fi,
+ * the gpio2 pad on X900), both read
  * through the pmk8350 ADC as channels 0x144 and 0x14a. Ratiometric with
  * the 100 kOhm pull-up; the driver's NTC table yields millidegrees.
  */
@@ -2289,7 +2294,6 @@
 &wacom_i2c { status = "disabled"; };
 &wacom_avdd { status = "disabled"; };
 &{/gpio-keys} { status = "disabled"; };
-&pmk8350_vadc { status = "disabled"; };
 &vamacro { status = "disabled"; };
 &usb_1_dwc3_hs { /delete-property/ remote-endpoint; };
 &max77705_typec_hs { /delete-property/ remote-endpoint; };
