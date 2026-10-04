@@ -626,11 +626,13 @@
 		};
 
 		/*
-		 * Sensor hub rails (stock remoteproc-slpi: sensor_vdd = L2C 1.8 V,
-		 * sensor_vddio = L13C 3.0 V; both drop when the stock SLPI stops).
-		 * The mainline SLPI node has no supply properties, so they are held
-		 * on here. Without them the sensor process on the SLPI dies on an
-		 * I2C transfer timeout 13 s after boot (issue #33).
+		 * Inherited X800 note: sensor hub rails (stock remoteproc-slpi:
+		 * sensor_vdd = L2C 1.8 V, sensor_vddio = L13C 3.0 V; both drop
+		 * when the stock SLPI stops). The mainline SLPI node has no supply
+		 * properties, so they are held on here. Without them the sensor
+		 * process on the SLPI dies on an I2C transfer timeout 13 s after
+		 * boot (issue #33). X900 stock keeps sensor_vdd on L2C at 1.8 V
+		 * but has no sensor_vddio; see L13C below.
 		 */
 		vreg_l2c_1p8: ldo2 {
 			regulator-min-microvolt = <1800000>;
@@ -639,11 +641,18 @@
 			regulator-always-on;
 		};
 
-		vreg_l13c_3p0: ldo13 {
-			regulator-min-microvolt = <3000000>;
-			regulator-max-microvolt = <3000000>;
+		/*
+		 * X900 stock constrains L13C to 1.8 V and gives it no active
+		 * consumer: its SLPI node has only sensor_vdd (L2C above), not
+		 * the X800's 3.0 V sensor_vddio. The inherited 3.0 V always-on
+		 * setting drove this rail outside the X900 stock range on every
+		 * boot. Describe the stock limit and leave the rail to its
+		 * bootloader state until a consumer is identified.
+		 */
+		vreg_l13c_1p8: ldo13 {
+			regulator-min-microvolt = <1800000>;
+			regulator-max-microvolt = <1800000>;
 			regulator-initial-mode = <RPMH_REGULATOR_MODE_HPM>;
-			regulator-always-on;
 		};
 
 		/*
