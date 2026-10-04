@@ -154,6 +154,20 @@ card detect on GPIO92, active low. A 64 GB card enumerates as SDR104 with the
 I/O rail at 1.8 V and reads at 57-62 MB/s without errors. Writes, hotplug and
 other cards are untested.
 
+Kernel package `7.2-r70` takes the ADSP and the SLPI sensor hub out of the
+quarantine. The X900 stock reserved-memory regions (ADSP at `0x84500000`,
+SLPI `0x88000000`+`0x1700000`) and the L2C sensor rail equal the inherited
+description; stock holds no second sensor rail here. With `adsp.*` and
+`slpi.*` from the DYDC firmware package's `NON-HLOS.bin` under
+`/lib/firmware/qcom/sm8450/gts8uwifi/`, both reach `running` about 0.5 s
+after `qcom_q6v5_pas` loads and both FastRPC devices appear. Alpine's
+`hexagonrpcd` 0.4.0 with no sensor tree makes the SLPI's sensor process
+fault in `sns_registry_sensor.c` and restart every 4 s; with the daemon
+stopped the hub stays up. Reading sensors needs what the X800 port has and
+the X900 package lacks: the patched daemon and the stock sensor registry
+configs. The audio macros fail to probe behind the ADSP because the sound
+card stays disabled.
+
 `poweroff` with the USB cable attached comes straight back up: the bootloader
 powers the tablet on when a charger is present. Unplugged, it stays off and
 the power button starts it. No kernel change is involved; a PS_HOLD rewrite
@@ -254,7 +268,7 @@ deferred.
 | Power | Charger/gauge and battery readings, thermal sensors, idle consumption and system suspend/resume. |
 | Storage/system | UFS filesystem operation, an installed rootfs and normal userspace boot; microSD writes and hotplug. UFS enumeration and microSD reads work. |
 | Audio | Amplifiers, speakers, microphones and routing on X900. |
-| Other hardware | Sensors, cameras and fingerprint reader; audit inherited descriptions before enabling them. |
+| Other hardware | Sensor readings (the SLPI boots; the registry tree, the patched `hexagonrpcd` and a firmware extractor for the X900 package are missing), cameras and fingerprint reader; audit inherited descriptions before enabling them. |
 | Portability | Transfer ABL's live RAM/reservations rather than assuming this DYDC/12 GiB layout for other firmware or capacities. |
 | Submission | Kernel bindings and `dtbs_check`, removal of remaining bring-up workarounds, X800 hardware regression and separate Linux/uniLoader/pmaports submissions. |
 

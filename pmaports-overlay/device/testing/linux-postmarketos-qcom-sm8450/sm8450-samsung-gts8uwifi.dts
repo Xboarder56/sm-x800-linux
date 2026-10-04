@@ -2218,21 +2218,16 @@
 };
 
 /*
- * X900 first-boot quarantine. The signed GPU/ADSP/SLPI blobs have not yet
- * been staged under the gts8uwifi namespace. Keep these nonessential
- * subsystems off until each is validated on this board. WiFi/BT left the
- * quarantine once the X900 stock cnss-qca6490/bt_qca6490 nodes were checked:
- * same enable GPIOs, rails and BT UART as the description above.
+ * X900 first-boot quarantine. The signed GPU blob has not yet been staged
+ * under the gts8uwifi namespace. Keep these nonessential subsystems off
+ * until each is validated on this board. WiFi/BT left the quarantine once
+ * the X900 stock cnss-qca6490/bt_qca6490 nodes were checked: same enable
+ * GPIOs, rails and BT UART as the description above. The ADSP and SLPI left
+ * it once they booted the X900 stock images: the stock reserved-memory
+ * regions and the L2C sensor rail match the description above, and stock
+ * holds no second sensor rail on this board.
  */
 &gpu {
-	status = "disabled";
-};
-
-&remoteproc_adsp {
-	status = "disabled";
-};
-
-&remoteproc_slpi {
 	status = "disabled";
 };
 
