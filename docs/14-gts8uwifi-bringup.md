@@ -148,6 +148,12 @@ measurements are in [display](../device-facts/gts8uwifi/display.md). The
 cycles were checked by TE, `tcon_rdy`, register reads and error counters, not
 by eye.
 
+Kernel package `7.2-r69` enables the microSD slot from the stock
+`sdhci@8804000` description: PM8350C L9C for the card, L6C for its I/O and
+card detect on GPIO92, active low. A 64 GB card enumerates as SDR104 with the
+I/O rail at 1.8 V and reads at 57-62 MB/s without errors. Writes, hotplug and
+other cards are untested.
+
 `poweroff` with the USB cable attached comes straight back up: the bootloader
 powers the tablet on when a charger is present. Unplugged, it stays off and
 the power button starts it. No kernel change is involved; a PS_HOLD rewrite
@@ -246,7 +252,7 @@ deferred.
 | Wireless | Wi-Fi association, throughput and 5/6 GHz; a Bluetooth address source and pairing; module and firmware packaging for an installed system. Scanning works on both radios. |
 | USB | Host networking/SSH, host mode, SuperSpeed and role changes. USB2 device serial works. |
 | Power | Charger/gauge and battery readings, thermal sensors, idle consumption and system suspend/resume. |
-| Storage/system | UFS filesystem operation, microSD, an installed rootfs and normal userspace boot. UFS enumeration works. |
+| Storage/system | UFS filesystem operation, an installed rootfs and normal userspace boot; microSD writes and hotplug. UFS enumeration and microSD reads work. |
 | Audio | Amplifiers, speakers, microphones and routing on X900. |
 | Other hardware | Sensors, cameras and fingerprint reader; audit inherited descriptions before enabling them. |
 | Portability | Transfer ABL's live RAM/reservations rather than assuming this DYDC/12 GiB layout for other firmware or capacities. |

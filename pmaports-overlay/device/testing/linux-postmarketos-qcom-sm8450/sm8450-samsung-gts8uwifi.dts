@@ -621,6 +621,19 @@
 		};
 
 		/*
+		 * microSD rails, from the X900 rev-5 stock sdhci@8804000:
+		 *   vdd-io-supply -> pm8350c L6C, 1.8-3.008 V
+		 *   vdd-supply    -> pm8350c L9C, 2.96-3.008 V
+		 * Stock lists no other consumer for either.
+		 */
+		vreg_l6c_1p8: ldo6 {
+			regulator-name = "vreg_l6c_1p8";
+			regulator-min-microvolt = <1800000>;
+			regulator-max-microvolt = <3008000>;
+			regulator-initial-mode = <RPMH_REGULATOR_MODE_HPM>;
+		};
+
+		/*
 		 * Touchscreen rails, from the X900 rev-5 stock DTB's
 		 * touchscreen@5d (the X800 used a 3.0-3.3 V range and 1.848 V):
 		 *   tsp_avdd_ldo-supply -> pm8350c L7C, 3.3 V, regulator-boot-on
@@ -641,6 +654,13 @@
 		vreg_l8c_1p8: ldo8 {
 			regulator-min-microvolt = <1800000>;
 			regulator-max-microvolt = <1800000>;
+			regulator-initial-mode = <RPMH_REGULATOR_MODE_HPM>;
+		};
+
+		vreg_l9c_2p96: ldo9 {
+			regulator-name = "vreg_l9c_2p96";
+			regulator-min-microvolt = <2960000>;
+			regulator-max-microvolt = <3008000>;
 			regulator-initial-mode = <RPMH_REGULATOR_MODE_HPM>;
 		};
 
@@ -758,6 +778,14 @@
 		"pogo-stm32-nrst",				/* 97 */
 		"",						/* 98 */
 		"pogo-stm32-swclk";				/* 99 */
+
+	/* microSD card detect (stock sdc2_on/sdc2_off sd-cd): no internal bias. */
+	sdc2_card_det_n: sd-card-det-n-state {
+		pins = "gpio92";
+		function = "gpio";
+		drive-strength = <2>;
+		bias-disable;
+	};
 
 	/* Camera MCLK1 to the rear ultrawide sensor (stock cam_sensor_mclk1_active). */
 	cam_mclk1_default: cam-mclk1-default-state {
@@ -1329,6 +1357,23 @@
  * reset-gpios is deliberately omitted: the HDK's <&tlmm 210> is board
  * specific and the stock DTB exposes no UFS reset line for this tablet.
  */
+/*
+ * microSD slot, from the X900 rev-5 stock sdhci@8804000: card detect on
+ * gpio92, active low, with the L9C/L6C supplies. The X800 description this
+ * file started from does not describe the slot.
+ */
+&sdhc_2 {
+	cd-gpios = <&tlmm 92 GPIO_ACTIVE_LOW>;
+	pinctrl-names = "default", "sleep";
+	pinctrl-0 = <&sdc2_default_state &sdc2_card_det_n>;
+	pinctrl-1 = <&sdc2_sleep_state &sdc2_card_det_n>;
+	vmmc-supply = <&vreg_l9c_2p96>;
+	vqmmc-supply = <&vreg_l6c_1p8>;
+	no-sdio;
+	no-mmc;
+	status = "okay";
+};
+
 &ufs_mem_hc {
 	status = "okay";
 
