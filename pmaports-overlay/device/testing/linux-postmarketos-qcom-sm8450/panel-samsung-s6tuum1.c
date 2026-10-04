@@ -2,6 +2,7 @@
 /*
  * Samsung S6TUUM1 AMSA24VU01 WQXGA AMOLED panel (Galaxy Tab S8+, SM-X800).
  *
+ * AMSA24VU01 (original Galaxy Tab S8+ path):
  * 2800x1752 landscape raster, DSI command mode, 4 lanes, DSC 1.1
  * (8 bpp, two 1400x12 slices per line). Init sequence, DSC parameters and
  * power/reset facts extracted from the stock DTB's ss_dsi_panel node and
@@ -15,6 +16,7 @@
  *
  * Only the 120 Hz timing is implemented (DDIC reg 0x60 = 0x20; stock also
  * has a 60 Hz variant with 0x60 = 0x00 for VRR — later work).
+ *
  */
 
 #include <linux/backlight.h>
@@ -23,12 +25,26 @@
 #include <linux/module.h>
 #include <linux/of.h>
 #include <linux/regulator/consumer.h>
+#include <linux/property.h>
 
 #include <drm/display/drm_dsc.h>
 #include <drm/display/drm_dsc_helper.h>
 #include <drm/drm_mipi_dsi.h>
 #include <drm/drm_probe_helper.h>
 #include <drm/drm_panel.h>
+
+struct s6tuum1;
+
+struct s6tuum1_panel_desc {
+	const struct drm_display_mode *mode;
+	void (*reset)(struct s6tuum1 *priv);
+	int (*on)(struct s6tuum1 *priv);
+	int (*enable)(struct s6tuum1 *priv);
+	unsigned int slice_width;
+	unsigned int slice_height;
+	unsigned int default_brightness;
+	unsigned int max_brightness;
+};
 
 struct s6tuum1 {
 	struct drm_panel panel;
@@ -37,6 +53,7 @@ struct s6tuum1 {
 	struct gpio_desc *reset_gpio;
 	struct gpio_desc *tcon_rdy_gpio;
 	struct regulator *vdd;
+	const struct s6tuum1_panel_desc *desc;
 };
 
 static inline struct s6tuum1 *to_s6tuum1(struct drm_panel *panel)
@@ -44,7 +61,7 @@ static inline struct s6tuum1 *to_s6tuum1(struct drm_panel *panel)
 	return container_of(panel, struct s6tuum1, panel);
 }
 
-static void s6tuum1_reset(struct s6tuum1 *priv)
+static void s6tuum1_amsa24_reset(struct s6tuum1 *priv)
 {
 	gpiod_set_value_cansleep(priv->reset_gpio, 1);
 	usleep_range(5000, 6000);
@@ -90,7 +107,7 @@ static void s6tuum1_wait_tcon_ready(struct s6tuum1 *priv)
  * DDIC's own; the visible landmarks are 0x60 = refresh rate select and
  * the 0xB0 global-parameter pointer writes.
  */
-static int s6tuum1_on(struct s6tuum1 *priv)
+static int s6tuum1_amsa24_on(struct s6tuum1 *priv)
 {
 	struct mipi_dsi_multi_context ctx = { .dsi = priv->dsi };
 
@@ -152,6 +169,9 @@ static int s6tuum1_on(struct s6tuum1 *priv)
 }
 
 /*
+ * Historical X800 bring-up note, retained for the takeover investigation.
+ * The current prepare path cold-initializes the selected panel variant.
+ *
  * TAKEOVER EXPERIMENT (r34): across r30-r33 the panel emitted exactly 7 TE
  * pulses and then went permanently silent, regardless of init variations
  * (PPS delivery, LP vs HS commands). Best reading: those pulses are the
@@ -172,10 +192,10 @@ static int s6tuum1_prepare(struct drm_panel *panel)
 
 	/* stock supply entry: 11 ms post-on */
 	usleep_range(11000, 12000);
-	s6tuum1_reset(priv);
+	priv->desc->reset(priv);
 	s6tuum1_wait_tcon_ready(priv);
 
-	ret = s6tuum1_on(priv);
+	ret = priv->desc->on(priv);
 	if (ret < 0) {
 		gpiod_set_value_cansleep(priv->reset_gpio, 0);
 		regulator_disable(priv->vdd);
@@ -185,15 +205,21 @@ static int s6tuum1_prepare(struct drm_panel *panel)
 	return 0;
 }
 
-static int s6tuum1_enable(struct drm_panel *panel)
+static int s6tuum1_amsa24_enable(struct s6tuum1 *priv)
 {
-	struct s6tuum1 *priv = to_s6tuum1(panel);
 	struct mipi_dsi_multi_context ctx = { .dsi = priv->dsi };
 
 	mipi_dsi_dcs_set_display_on_multi(&ctx);
 	mipi_dsi_msleep(&ctx, 17);	/* stock display_on wait */
 
 	return ctx.accum_err;
+}
+
+static int s6tuum1_enable(struct drm_panel *panel)
+{
+	struct s6tuum1 *priv = to_s6tuum1(panel);
+
+	return priv->desc->enable(priv);
 }
 
 static int s6tuum1_disable(struct drm_panel *panel)
@@ -219,7 +245,7 @@ static int s6tuum1_unprepare(struct drm_panel *panel)
 }
 
 /* Stock 120 Hz timing: porches h 64/48/64 (fp/bp/pw), v 48/48/64 */
-static const struct drm_display_mode s6tuum1_mode = {
+static const struct drm_display_mode s6tuum1_amsa24_mode = {
 	.clock = (2800 + 64 + 64 + 48) * (1752 + 48 + 64 + 48) * 120 / 1000,
 	.hdisplay = 2800,
 	.hsync_start = 2800 + 64,
@@ -234,10 +260,29 @@ static const struct drm_display_mode s6tuum1_mode = {
 	.type = DRM_MODE_TYPE_DRIVER | DRM_MODE_TYPE_PREFERRED,
 };
 
+static const struct s6tuum1_panel_desc s6tuum1_amsa24_desc = {
+	.mode = &s6tuum1_amsa24_mode,
+	.reset = s6tuum1_amsa24_reset,
+	.on = s6tuum1_amsa24_on,
+	.enable = s6tuum1_amsa24_enable,
+	.slice_width = 1400,
+	.slice_height = 12,
+	/*
+	 * DBV is 11 bits on this DDIC: downstream fills 0x51 with
+	 * DBV[7:0] + DBV[10:8] and the candela table tops out at
+	 * 0x7ff (420 nits). Values above 2047 wrap — 2048 reads
+	 * back as DBV 0, i.e. a black screen.
+	 */
+	.default_brightness = 0x5d8,
+	.max_brightness = 0x7ff,
+};
+
 static int s6tuum1_get_modes(struct drm_panel *panel,
 			     struct drm_connector *connector)
 {
-	return drm_connector_helper_get_modes_fixed(connector, &s6tuum1_mode);
+	struct s6tuum1 *priv = to_s6tuum1(panel);
+
+	return drm_connector_helper_get_modes_fixed(connector, priv->desc->mode);
 }
 
 static const struct drm_panel_funcs s6tuum1_panel_funcs = {
@@ -265,19 +310,14 @@ static const struct backlight_ops s6tuum1_bl_ops = {
 };
 
 static struct backlight_device *
-s6tuum1_create_backlight(struct mipi_dsi_device *dsi)
+s6tuum1_create_backlight(struct s6tuum1 *priv)
 {
+	struct mipi_dsi_device *dsi = priv->dsi;
 	struct device *dev = &dsi->dev;
 	const struct backlight_properties props = {
 		.type = BACKLIGHT_RAW,
-		/*
-		 * DBV is 11 bits on this DDIC: downstream fills 0x51 with
-		 * DBV[7:0] + DBV[10:8] and the candela table tops out at
-		 * 0x7ff (420 nits). Values above 2047 wrap — 2048 reads
-		 * back as DBV 0, i.e. a black screen.
-		 */
-		.brightness = 0x5d8,
-		.max_brightness = 0x7ff,
+		.brightness = priv->desc->default_brightness,
+		.max_brightness = priv->desc->max_brightness,
 	};
 
 	return devm_backlight_device_register(dev, dev_name(dev), dev, dsi,
@@ -295,6 +335,10 @@ static int s6tuum1_probe(struct mipi_dsi_device *dsi)
 				    DRM_MODE_CONNECTOR_DSI);
 	if (IS_ERR(priv))
 		return PTR_ERR(priv);
+
+	priv->desc = device_get_match_data(dev);
+	if (!priv->desc)
+		return dev_err_probe(dev, -ENODEV, "missing panel descriptor\n");
 
 	priv->vdd = devm_regulator_get(dev, "vdd");
 	if (IS_ERR(priv->vdd))
@@ -321,7 +365,7 @@ static int s6tuum1_probe(struct mipi_dsi_device *dsi)
 
 	priv->panel.prepare_prev_first = true;
 
-	priv->panel.backlight = s6tuum1_create_backlight(dsi);
+	priv->panel.backlight = s6tuum1_create_backlight(priv);
 	if (IS_ERR(priv->panel.backlight))
 		return dev_err_probe(dev, PTR_ERR(priv->panel.backlight),
 				     "failed to create backlight\n");
@@ -332,9 +376,9 @@ static int s6tuum1_probe(struct mipi_dsi_device *dsi)
 	dsi->dsc = &priv->dsc;
 	priv->dsc.dsc_version_major = 1;
 	priv->dsc.dsc_version_minor = 1;
-	priv->dsc.slice_height = 12;
-	priv->dsc.slice_width = 1400;
-	priv->dsc.slice_count = 2800 / priv->dsc.slice_width;
+	priv->dsc.slice_height = priv->desc->slice_height;
+	priv->dsc.slice_width = priv->desc->slice_width;
+	priv->dsc.slice_count = priv->desc->mode->hdisplay / priv->dsc.slice_width;
 	priv->dsc.bits_per_component = 8;
 	priv->dsc.bits_per_pixel = 8 << 4;	/* 4 fractional bits */
 	priv->dsc.block_pred_enable = true;
@@ -357,7 +401,10 @@ static void s6tuum1_remove(struct mipi_dsi_device *dsi)
 }
 
 static const struct of_device_id s6tuum1_of_match[] = {
-	{ .compatible = "samsung,s6tuum1-amsa24vu01" },
+	{
+		.compatible = "samsung,s6tuum1-amsa24vu01",
+		.data = &s6tuum1_amsa24_desc,
+	},
 	{ }
 };
 MODULE_DEVICE_TABLE(of, s6tuum1_of_match);
@@ -372,5 +419,5 @@ static struct mipi_dsi_driver s6tuum1_driver = {
 };
 module_mipi_dsi_driver(s6tuum1_driver);
 
-MODULE_DESCRIPTION("Samsung S6TUUM1 AMSA24VU01 WQXGA AMOLED panel driver");
+MODULE_DESCRIPTION("Samsung S6TUUM1 WQXGA AMOLED panel driver");
 MODULE_LICENSE("GPL");
