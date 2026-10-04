@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
  * Samsung S6TUUM1 AMSA24VU01 WQXGA AMOLED panel (Galaxy Tab S8+, SM-X800).
+ * Samsung S6TUUM1 AMSA46AS01 WQXGA AMOLED panel (Galaxy Tab S8 Ultra, SM-X900).
  *
  * AMSA24VU01 (original Galaxy Tab S8+ path):
  * 2800x1752 landscape raster, DSI command mode, 4 lanes, DSC 1.1
@@ -17,6 +18,11 @@
  * Only the 120 Hz timing is implemented (DDIC reg 0x60 = 0x20; stock also
  * has a 60 Hz variant with 0x60 = 0x00 for VRR — later work).
  *
+ * AMSA46AS01 adds the Galaxy Tab S8 Ultra's 2960x1848 landscape raster,
+ * DSC 1.1 at 8 bpp with two 1480x132 slices per line, and its distinct
+ * power/reset and command sequence. See device-facts/gts8uwifi/display.md
+ * for the stock CYB1/DYDC derivation. The X900 path currently implements
+ * 60 Hz; the existing AMSA24VU01 sequence and timing are retained separately.
  */
 
 #include <linux/backlight.h>
@@ -69,6 +75,15 @@ static void s6tuum1_amsa24_reset(struct s6tuum1 *priv)
 	usleep_range(5000, 6000);
 	gpiod_set_value_cansleep(priv->reset_gpio, 1);
 	usleep_range(10000, 11000);
+}
+
+/* X900 stock qcom,mdss-dsi-reset-sequence = <0 2 1 1>. */
+static void s6tuum1_amsa46_reset(struct s6tuum1 *priv)
+{
+	gpiod_set_value_cansleep(priv->reset_gpio, 0);
+	usleep_range(2000, 3000);
+	gpiod_set_value_cansleep(priv->reset_gpio, 1);
+	usleep_range(1000, 2000);
 }
 
 /*
@@ -169,6 +184,53 @@ static int s6tuum1_amsa24_on(struct s6tuum1 *priv)
 }
 
 /*
+ * AMSA46AS01 stock 60 Hz qcom,mdss-dsi-on-command. The 88-byte PPS is
+ * copied verbatim from the X900 rev-5 stock DTB (CYB1 and DYDC match).
+ * See device-facts/gts8uwifi/display.md for provenance. Samsung sends compression
+ * mode before the PPS, then selects 60 Hz with 0x60 = 0x00 and a 50 ms
+ * post-write delay.
+ */
+static int s6tuum1_amsa46_on(struct s6tuum1 *priv)
+{
+	struct mipi_dsi_multi_context ctx = { .dsi = priv->dsi };
+
+	mipi_dsi_dcs_exit_sleep_mode_multi(&ctx);
+	mipi_dsi_msleep(&ctx, 120);
+
+	mipi_dsi_dcs_write_seq_multi(&ctx, 0xd3, 0x4f);
+	mipi_dsi_dcs_write_seq_multi(&ctx, 0x98, 0x00);
+
+	mipi_dsi_compression_mode_multi(&ctx, true);
+
+	mipi_dsi_dcs_write_seq_multi(&ctx, 0x9e,
+		0x11, 0x01, 0x00, 0x89, 0x30, 0x80, 0x07, 0x38, 0x0b, 0x90,
+		0x00, 0x84, 0x05, 0xc8, 0x05, 0xc8, 0x02, 0x00, 0x03, 0xe5,
+		0x00, 0x20, 0x13, 0x0f, 0x00, 0x14, 0x00, 0x0c, 0x00, 0xbc,
+		0x00, 0x48, 0x18, 0x00, 0x10, 0xf0, 0x03, 0x0c, 0x20, 0x00,
+		0x06, 0x0b, 0x0b, 0x33, 0x0e, 0x1c, 0x2a, 0x38, 0x46, 0x54,
+		0x62, 0x69, 0x70, 0x77, 0x79, 0x7b, 0x7d, 0x7e, 0x01, 0x02,
+		0x01, 0x00, 0x09, 0x40, 0x09, 0xbe, 0x19, 0xfc, 0x19, 0xfa,
+		0x19, 0xf8, 0x1a, 0x38, 0x1a, 0x78, 0x1a, 0xb6, 0x2a, 0xf6,
+		0x2b, 0x34, 0x2b, 0x74, 0x3b, 0x74, 0x6b, 0xf4);
+
+	mipi_dsi_dcs_write_seq_multi(&ctx, 0x79, 0x02);
+	mipi_dsi_dcs_write_seq_multi(&ctx, 0xb0, 0x00, 0x03, 0x68);
+	mipi_dsi_dcs_write_seq_multi(&ctx, 0x68, 0x14);
+	mipi_dsi_dcs_write_seq_multi(&ctx, 0x51, 0xff, 0x07);
+	mipi_dsi_dcs_write_seq_multi(&ctx, 0x53, 0x20);
+	mipi_dsi_dcs_write_seq_multi(&ctx, 0x60, 0x00);
+	mipi_dsi_msleep(&ctx, 50);
+	mipi_dsi_dcs_write_seq_multi(&ctx, 0x86, 0x00, 0x03);
+	mipi_dsi_dcs_write_seq_multi(&ctx, 0x68, 0x19);
+	mipi_dsi_dcs_write_seq_multi(&ctx, 0xb0, 0x00, 0xc3, 0xb3);
+	mipi_dsi_dcs_write_seq_multi(&ctx, 0xb3, 0x0d);
+
+	mipi_dsi_dcs_set_tear_on_multi(&ctx, MIPI_DSI_DCS_TEAR_MODE_VBLANK);
+
+	return ctx.accum_err;
+}
+
+/*
  * Historical X800 bring-up note, retained for the takeover investigation.
  * The current prepare path cold-initializes the selected panel variant.
  *
@@ -209,6 +271,19 @@ static int s6tuum1_amsa24_enable(struct s6tuum1 *priv)
 {
 	struct mipi_dsi_multi_context ctx = { .dsi = priv->dsi };
 
+	mipi_dsi_dcs_set_display_on_multi(&ctx);
+	mipi_dsi_msleep(&ctx, 17);	/* stock display_on wait */
+
+	return ctx.accum_err;
+}
+
+static int s6tuum1_amsa46_enable(struct s6tuum1 *priv)
+{
+	struct mipi_dsi_multi_context ctx = { .dsi = priv->dsi };
+
+	/* X900 stock samsung,first_display_on_tx_cmds_revA, before 0x29. */
+	mipi_dsi_dcs_write_seq_multi(&ctx, 0xf8, 0x58, 0x00, 0xd0, 0x1d);
+	mipi_dsi_dcs_write_seq_multi(&ctx, 0xf9, 0x00, 0x00, 0x00, 0x00);
 	mipi_dsi_dcs_set_display_on_multi(&ctx);
 	mipi_dsi_msleep(&ctx, 17);	/* stock display_on wait */
 
@@ -260,6 +335,27 @@ static const struct drm_display_mode s6tuum1_amsa24_mode = {
 	.type = DRM_MODE_TYPE_DRIVER | DRM_MODE_TYPE_PREFERRED,
 };
 
+/*
+ * AMSA46AS01 stock 60 Hz: h and v fp/pw/bp 200/200/200.
+ * The 120 Hz command-mode transfer timing needs a separate mainline
+ * translation: treating its stock porches as video blanking exceeds the
+ * 500 MHz DPU clock limit. See device-facts/gts8uwifi/display.md.
+ */
+static const struct drm_display_mode s6tuum1_amsa46_mode = {
+	.clock = (2960 + 200 + 200 + 200) * (1848 + 200 + 200 + 200) * 60 / 1000,
+	.hdisplay = 2960,
+	.hsync_start = 2960 + 200,
+	.hsync_end = 2960 + 200 + 200,
+	.htotal = 2960 + 200 + 200 + 200,
+	.vdisplay = 1848,
+	.vsync_start = 1848 + 200,
+	.vsync_end = 1848 + 200 + 200,
+	.vtotal = 1848 + 200 + 200 + 200,
+	.width_mm = 313,
+	.height_mm = 196,
+	.type = DRM_MODE_TYPE_DRIVER | DRM_MODE_TYPE_PREFERRED,
+};
+
 static const struct s6tuum1_panel_desc s6tuum1_amsa24_desc = {
 	.mode = &s6tuum1_amsa24_mode,
 	.reset = s6tuum1_amsa24_reset,
@@ -273,6 +369,17 @@ static const struct s6tuum1_panel_desc s6tuum1_amsa24_desc = {
 	 * 0x7ff (420 nits). Values above 2047 wrap — 2048 reads
 	 * back as DBV 0, i.e. a black screen.
 	 */
+	.default_brightness = 0x5d8,
+	.max_brightness = 0x7ff,
+};
+
+static const struct s6tuum1_panel_desc s6tuum1_amsa46_desc = {
+	.mode = &s6tuum1_amsa46_mode,
+	.reset = s6tuum1_amsa46_reset,
+	.on = s6tuum1_amsa46_on,
+	.enable = s6tuum1_amsa46_enable,
+	.slice_width = 1480,
+	.slice_height = 132,
 	.default_brightness = 0x5d8,
 	.max_brightness = 0x7ff,
 };
@@ -404,6 +511,10 @@ static const struct of_device_id s6tuum1_of_match[] = {
 	{
 		.compatible = "samsung,s6tuum1-amsa24vu01",
 		.data = &s6tuum1_amsa24_desc,
+	},
+	{
+		.compatible = "samsung,s6tuum1-amsa46as01",
+		.data = &s6tuum1_amsa46_desc,
 	},
 	{ }
 };
