@@ -710,10 +710,15 @@
 			regulator-always-on;
 		};
 
-		/* WCN6855 rfa 1.9 V rail (stock vdd-wlan-rfa1) */
+		/*
+		 * WCN6855 rfa 1.9 V rail (stock vdd-wlan-rfa1). The stock rail
+		 * allows 1.8-2.024 V but its only consumer, cnss-qca6490, asks
+		 * for at least 1.9 V. Linux programs the constraint minimum, so
+		 * the inherited 1.8 V floor ran the radio at 1.808 V.
+		 */
 		vreg_s1c_1p86: smps1 {
 			regulator-name = "vreg_s1c_1p86";
-			regulator-min-microvolt = <1800000>;
+			regulator-min-microvolt = <1900000>;
 			regulator-max-microvolt = <2024000>;
 		};
 	};
@@ -737,15 +742,25 @@
 		vdd-l5-l6-supply = <&vreg_s1c_1p86>;
 		vdd-l7-bob-supply = <&vreg_bob>;
 
+		/*
+		 * Parent of L3E (1.2 V). Stock starts it at 1.256 V; the inherited
+		 * 1.2 V floor left the LDO without headroom, since Linux programs
+		 * the constraint minimum.
+		 */
 		vreg_s1e_1p25: smps1 {
 			regulator-name = "vreg_s1e_1p25";
-			regulator-min-microvolt = <1200000>;
+			regulator-min-microvolt = <1256000>;
 			regulator-max-microvolt = <1296000>;
 		};
 
+		/*
+		 * WCN6855 vdd-wlan-aon. The stock rail allows 0.5-1.04 V and its
+		 * only consumer, cnss-qca6490, asks for 1.012 V. With the
+		 * inherited 0.5 V floor Linux programmed 0.5 V.
+		 */
 		vreg_s2e_0p85: smps2 {
 			regulator-name = "vreg_s2e_0p85";
-			regulator-min-microvolt = <500000>;
+			regulator-min-microvolt = <1012000>;
 			regulator-max-microvolt = <1040000>;
 		};
 	};
