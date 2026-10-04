@@ -322,7 +322,7 @@ deferred.
 | Graphics | Rendering to the panel and a compositor on the Adreno 730; a packaged source for the zap shader on X900. The GPU initialises and Mesa reports FD730. |
 | Wireless | Wi-Fi association, throughput and 5/6 GHz; a Bluetooth address source and pairing; module and firmware packaging for an installed system. Scanning works on both radios. |
 | USB | Host networking/SSH, host mode, SuperSpeed and role changes. USB2 device serial works. |
-| Power | Charger/gauge and battery readings, thermal sensors, idle consumption and system suspend/resume. |
+| Power | Enabling the charger and fuel gauge with the X900 battery data (audited in [power](../device-facts/gts8uwifi/power.md), not enabled), idle consumption and system suspend/resume. The bootloader's charger state keeps the battery full; SoC thermal zones and both thermistors read. |
 | Storage/system | UFS filesystem operation and an installed rootfs on it; packaging the microSD boot (gadget service, image creation outside Docker); microSD hotplug. UFS enumeration works and a console rootfs boots from microSD. |
 | Audio | Amplifiers, speakers, microphones and routing on X900. |
 | Other hardware | Packaging the sensor stack for X900 (daemon, udev rules, mount matrix, extractor, per-device revision) and a hands-on check of orientation, hall switches and keys; Wi-Fi thermistor conversion; cameras and fingerprint reader. Sensors read through the SLPI on a hand-assembled tree. |
