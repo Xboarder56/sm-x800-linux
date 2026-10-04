@@ -190,11 +190,11 @@
 	 * ranges caused an external abort in clear_page: this tablet does NOT
 	 * expose 0x839500000..0x839b00000 or 0x83b900000..0x840000000.
 	 *
-	 * First-bring-up policy: retain the previous 0x980000000 upper limit
-	 * while using only ABL-reported banks below it. Samsung high-memory
-	 * debug carveouts and ABL's dynamic reservations are reserved below.
-	 * The physical tablet is 12 GiB; the remaining upper RAM is a separate
-	 * validation stage. Other RAM capacities/firmware need their live map.
+	 * All six ABL-reported banks are exposed, up to 0xa80000000. The first
+	 * bring-up stopped at 0x980000000; the top 4 GiB joined once a 9.5 GiB
+	 * fill-and-verify ran clean. Samsung high-memory debug carveouts and
+	 * ABL's dynamic reservations are reserved below. This is the 12 GiB
+	 * tablet's map; other RAM capacities/firmware need their live map.
 	 */
 	/delete-node/ memory@a0000000;
 
@@ -205,7 +205,7 @@
 		      <0x8 0x00000000 0x0 0x39500000>,
 		      <0x8 0x39b00000 0x0 0x01e00000>,
 		      <0x8 0x40000000 0x0 0xc0000000>,
-		      <0x9 0x00000000 0x0 0x80000000>;
+		      <0x9 0x00000000 0x1 0x80000000>;
 	};
 
 	/*

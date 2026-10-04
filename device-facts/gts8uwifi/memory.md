@@ -141,3 +141,18 @@ the diagnostic shell and USB link remain operational.
 These checks exercise Linux allocation and the actual postmarketOS ramdisk
 on the corrected map. They do not explain the earlier R9/R10 black screens,
 validate the excluded upper RAM, or prove all allocatable pages writable.
+
+## Full map, 2026-10-04
+
+Kernel package `7.2-r77` exposes all six ABL banks, ending at `0xa80000000`.
+The static audit advertises 12,087 MiB and passes against the stock
+reservations and the captured runtime ranges. On the tablet `MemTotal` is
+10,581,440 kB (6,473,168 kB with the earlier limit) and `/proc/iomem` shows
+`840000000-a7fffffff : System RAM`.
+
+A tmpfs was filled with 148 copies of a random 64 MiB block (9,536 MiB,
+leaving about 560 MiB free) and every copy matched the original's SHA-256;
+no external abort or other fault was logged. That was run twice in the
+initramfs shell on a workbench build of the same sources. It exercises page
+allocation and clearing across the banks; it is not a pattern memory test.
+

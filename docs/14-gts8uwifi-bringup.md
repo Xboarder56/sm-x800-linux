@@ -245,6 +245,11 @@ left pair on the left channel and right pair on the right, and three
 microphones answer. The measurements are in
 [audio](../device-facts/gts8uwifi/audio.md). Nobody has listened to it.
 
+Kernel package `7.2-r77` exposes all of the bootloader's RAM banks instead
+of stopping at `0x980000000`: `MemTotal` rises from 6.5 to 10.6 GB. A 9.5 GB
+fill-and-verify in a tmpfs ran clean twice; see
+[memory](../device-facts/gts8uwifi/memory.md).
+
 `poweroff` with the USB cable attached comes straight back up: the bootloader
 powers the tablet on when a charger is present. Unplugged, it stays off and
 the power button starts it. No kernel change is involved; a PS_HOLD rewrite
