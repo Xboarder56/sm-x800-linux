@@ -1,0 +1,52 @@
+drm/msm/dpu: keep the core clock vote until runtime suspend
+
+When the last CRTC goes inactive, dpu_core_perf_crtc_update() computes a
+core clock rate of zero and hands it to dev_pm_opp_set_rate(). That does
+not slow the clock down. It disables the OPP table, which drops the MMCX
+performance state vote, while the core clock keeps running at its last
+rate until the device is runtime suspended. Runtime resume then ungates
+the clock at that same rate, and the vote only returns when the first
+commit is flushed.
+
+On the Galaxy Tab S8 Ultra the 2960x1848 120 Hz DSC mode needs the top
+500 MHz OPP, so every display wake ran the DPU at 500 MHz with MMCX at
+its floor between runtime resume and the first flush. The first frame
+after each wake failed and the following display-off timed out:
+
+  [dpu error]enc35 frame done timeout
+  _dpu_encoder_phys_cmd_wait_for_idle: id:35 pp:0 kickoff timeout 0 cnt 1
+    koff_cnt 1
+  dpu_encoder_phys_cmd_wait_for_tx_complete: failed wait_for_idle: id:35
+    ret:-110 intf:1
+
+After a few off/on cycles a wake reset the SoC with nothing logged.
+Pinning the core clock through the core_perf debugfs fixed mode, which
+never votes zero, made the cycles clean with the bus votes unchanged.
+
+Skip the zero-rate update. The power domain already drops a device's
+performance state at runtime suspend and restores it before runtime
+resume, so MMCX still falls while the display is off (performance state
+64 off, 256 on) and is back before the clock is ungated.
+
+Generated from the pinned Linux 7.2 source. Not yet submitted upstream.
+
+--- a/drivers/gpu/drm/msm/disp/dpu1/dpu_core_perf.c
++++ b/drivers/gpu/drm/msm/disp/dpu1/dpu_core_perf.c
+@@ -394,6 +394,17 @@
+ 
+ 		trace_dpu_core_perf_update_clk(kms->dev, !crtc->enabled, clk_rate);
+ 
++		/*
++		 * A rate of zero means that no CRTC is active any more. It does
++		 * not slow the core clock down, it only drops the performance
++		 * state vote, while the clock keeps running at its last rate
++		 * until runtime suspend and is ungated at that rate again on
++		 * runtime resume, ahead of the first commit. Keep the vote; the
++		 * power domain drops and restores it across runtime PM.
++		 */
++		if (!clk_rate)
++			return 0;
++
+ 		clk_rate = min(clk_rate, kms->perf.max_core_clk_rate);
+ 		ret = dev_pm_opp_set_rate(&kms->pdev->dev, clk_rate);
+ 		if (ret) {
