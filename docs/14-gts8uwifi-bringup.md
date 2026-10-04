@@ -206,6 +206,15 @@ and what is still missing are in
 [sensors](../device-facts/gts8uwifi/sensors.md). In the same system the
 packaged firmware brings up `wlan0` and `hci0` without manual steps.
 
+Kernel package `7.2-r71` and device package r2 enable the Adreno 730. The
+initramfs carries `a730_sqe.fw`, `gmu_gen70000.bin` and the stock
+`a730_zap.*` (from `NON-HLOS.bin`, staged by hand). The GPU binds with the
+display, loads GMU firmware v4.0.7 and reports `gpu-initialized: 1`, chip
+`07030001`. Mesa 26.2.4 answers `eglinfo` on the GBM and surfaceless
+platforms as freedreno FD730 with OpenGL 4.6 and OpenGL ES 3.2. No frame has
+been rendered to the panel: that test waits for someone to watch it. A DRM
+client closing its device restores the console and wakes a blanked panel.
+
 `poweroff` with the USB cable attached comes straight back up: the bootloader
 powers the tablet on when a charger is present. Unplugged, it stays off and
 the power button starts it. No kernel change is involved; a PS_HOLD rewrite
@@ -300,7 +309,7 @@ deferred.
 |---|---|
 | Display | A look at display off/on by eye; stock's delayed display-on and MAX77816 boost programming; the bootloader's varying handoff state; brightness curve and HBM; 60 Hz switching; boots after an unclean reset. |
 | Input | GT6936 pen/palm events, more than two contacts, suspend/resume and firmware update; X900 S Pen and pogo/cover keyboard; remaining buttons. |
-| Graphics | Adreno GPU firmware, GMU initialization and hardware acceleration. |
+| Graphics | Rendering to the panel and a compositor on the Adreno 730; a packaged source for the zap shader on X900. The GPU initialises and Mesa reports FD730. |
 | Wireless | Wi-Fi association, throughput and 5/6 GHz; a Bluetooth address source and pairing; module and firmware packaging for an installed system. Scanning works on both radios. |
 | USB | Host networking/SSH, host mode, SuperSpeed and role changes. USB2 device serial works. |
 | Power | Charger/gauge and battery readings, thermal sensors, idle consumption and system suspend/resume. |
