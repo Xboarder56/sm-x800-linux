@@ -1,0 +1,20 @@
+# GPU firmware must be in the FIRST-STAGE initramfs.
+#
+# DRM_MSM is built in, and on a7xx the adreno driver loads its SQE microcode
+# at component-bind time, about 1.4 s into the boot and long before the
+# rootfs is mounted. The X800 port found a miss there costs the GPU for the
+# whole boot: msm registers display-only and nothing retries later (see the
+# gts8pwifi copy of this file).
+#
+# SQE + GMU come from linux-firmware-qcom (zstd-compressed; the kernel has
+# FW_LOADER_COMPRESS_ZSTD). The zap shader is Samsung-signed and comes from
+# the tablet's own stock firmware (NON-HLOS.bin / apnhlos), staged into
+# /lib/firmware by hand and never by a package, so those entries carry
+# !optional: a rootfs build without the staged zap must not fail, but the
+# resulting initramfs boots a display-only msm.
+/lib/firmware/qcom/a730_sqe.fw.zst
+/lib/firmware/qcom/gmu_gen70000.bin.zst
+/lib/firmware/qcom/sm8450/gts8uwifi/a730_zap.mdt!optional
+/lib/firmware/qcom/sm8450/gts8uwifi/a730_zap.b00!optional
+/lib/firmware/qcom/sm8450/gts8uwifi/a730_zap.b01!optional
+/lib/firmware/qcom/sm8450/gts8uwifi/a730_zap.b02!optional
