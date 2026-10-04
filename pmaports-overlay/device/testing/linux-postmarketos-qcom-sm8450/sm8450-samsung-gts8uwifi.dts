@@ -2293,7 +2293,6 @@
 &i2c18 { status = "disabled"; };
 &wacom_i2c { status = "disabled"; };
 &wacom_avdd { status = "disabled"; };
-&{/gpio-keys} { status = "disabled"; };
 &vamacro { status = "disabled"; };
 &usb_1_dwc3_hs { /delete-property/ remote-endpoint; };
 &max77705_typec_hs { /delete-property/ remote-endpoint; };

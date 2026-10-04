@@ -220,6 +220,11 @@ X900 state for the Wi-Fi thermistor puts pm8350 `gpio2` in high impedance,
 where the inherited X800 state named `gpio1`; with `gpio1` the channel read
 57-63 °C, with `gpio2` 31-32 °C beside the AP thermistor at 29 °C.
 
+Kernel package `7.2-r73` enables `gpio-keys`: volume-up on pm8350 `gpio6`
+and the cover and S Pen hall switches on TLMM 169 and 23, all as the stock
+X900 tree has them. The device registers and reports the cover switch open
+and the pen switch set. Nobody has pressed the key or moved a magnet yet.
+
 `poweroff` with the USB cable attached comes straight back up: the bootloader
 powers the tablet on when a charger is present. Unplugged, it stays off and
 the power button starts it. No kernel change is involved; a PS_HOLD rewrite
