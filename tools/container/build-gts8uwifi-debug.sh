@@ -110,9 +110,12 @@ fi
 
 # No rootfs UUIDs: pmos.debug-shell stops before rootfs mount/resize.
 source "$repo/pmaports-overlay/device/testing/device-samsung-gts8uwifi/deviceinfo"
-# The native panel is disabled, so no driver claims its boot-on regulator.
-# Keep inherited rails on during this diagnostic boot, alongside clocks/PDs.
-printf '%s\0' "$deviceinfo_kernel_cmdline regulator_ignore_unused bootloader=uniloader pmos.debug-shell rd.info $extra_cmdline" > "$out/cmdline"
+# This used to add regulator_ignore_unused, from when the native panel was
+# disabled and no driver claimed its boot-on regulator. The panel driver
+# holds its supply now, and the flag changed nothing on the X900: the only
+# rails without a user are RPMh ones whose state Linux cannot read, and the
+# regulator core leaves those alone.
+printf '%s\0' "$deviceinfo_kernel_cmdline bootloader=uniloader pmos.debug-shell rd.info $extra_cmdline" > "$out/cmdline"
 for board in gts8pwifi gts8uwifi; do
     cp -a "$run/source" "$run/$board"
     cp "$out/Image" "$run/$board/blob/Image"

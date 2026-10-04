@@ -283,6 +283,16 @@ GMU resume from 16-30 ms to about 9 ms. A hands-on session on the fixed
 kernel is still to do. Evidence is in
 [gpu](../device-facts/gts8uwifi/gpu.md).
 
+Device package r3 boots without the bring-up flags. `clk_ignore_unused
+pd_ignore_unused arm-smmu.disable_bypass=0` are gone from the kernel command
+line and the image builder no longer adds `regulator_ignore_unused`, which
+matches the X800. With none of them the microSD system comes up as before:
+both remote processors, sensors, Wi-Fi on 6 GHz, the sound card and capture,
+touch and S Pen devices, six UFS LUNs, two display off/on cycles and 300 GMU
+resumes, with no SMMU fault. The regulator flag had no effect here: the two
+rails without a Linux user (PM8350C L13 and PMR735A S1) are RPMh rails whose
+state cannot be read, and the regulator core does not switch those off.
+
 Notes from the desktop work: a DRM client closing the last open file on the
 device, render node included, restores the fbdev console and wakes a blanked
 panel. `pmbootstrap install` normally copies the apk signing keys into the
