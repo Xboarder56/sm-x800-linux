@@ -4,7 +4,7 @@ maintainer="Garrett Beasley <garrettbeasley@icloud.com>"
 pkgname=device-samsung-gts8uwifi
 pkgdesc="Samsung Galaxy Tab S8 Ultra (Wi-Fi) - mainline bring-up (SM8450)"
 pkgver=0.1
-pkgrel=2
+pkgrel=3
 url="https://postmarketos.org"
 license="MIT"
 arch="aarch64"
@@ -41,7 +41,7 @@ package() {
 		"$pkgdir"/usr/share/mkinitfs/files/60-gts8uwifi-gpu-fw.files
 }
 sha512sums="
-a242de86cb0a5758121634dee22988bef82f3b8423a5c3bf8a9fb2d99a9993e4a65a9cc8f42b0092ebf341b10c553850b4c536e802d5afb6f28fd95430a1c768  deviceinfo
+7f6218a6e7d200604dc239c5602dc367fd1cdf8b8c171b5305d18f3c8265f72c4fcd1065369f55ba15b4e5a8e998be4085a7229a85a6763b646e7564504e0758  deviceinfo
 4eb23ebdedab5353f54d526900a619843f7ba07cd3ca8927fbf18b5d3d52b1b5b2cd9e85ea3e0b90c17b557f1d3fbfc97790355de3f1c2f51d657dd403257244  mkinitfs-mdev.files
 9d73096d38f13614dc14c60b4346c50073ee1791477c27585d91e2a39c7fb0bad2c58d1b9582068ce3d34de84097d2701a11acaf58a79ddcd07d90031b88f410  mkinitfs-gpu-fw.files
 "

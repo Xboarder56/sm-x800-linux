@@ -56,7 +56,11 @@ deviceinfo_flash_heimdall_partition_rootfs="USERDATA"
 # PMOS_NO_OUTPUT_REDIRECT to keep pmOS from hiding the console behind its splash;
 # this pmOS initramfs uses rd.info, supplied by the debug image builder.
 # Retain ABL scanout until native X900 panel takeover is separately validated.
-deviceinfo_kernel_cmdline="earlycon=qcom_geni,0x0099c000 console=tty0 fbcon=font:TER16x32 loglevel=8 clk_ignore_unused pd_ignore_unused arm-smmu.disable_bypass=0 PMOS_NO_OUTPUT_REDIRECT"
+# (It has been: the native panel driver takes the display over, so the
+# bring-up flags that kept the bootloader's clocks, power domains and SMMU
+# bypass alive, clk_ignore_unused pd_ignore_unused arm-smmu.disable_bypass=0,
+# are gone as of r3, as on the X800.)
+deviceinfo_kernel_cmdline="earlycon=qcom_geni,0x0099c000 console=tty0 fbcon=font:TER16x32 loglevel=8 PMOS_NO_OUTPUT_REDIRECT"
 # First boot: the eventual rootfs target is userdata, matching the X800 port.
 # Current X900 tests write BOOT only; USERDATA has not been flashed. Restore
 # matching DYDC stock BOOT to return to Android (see docs/14). The X800
