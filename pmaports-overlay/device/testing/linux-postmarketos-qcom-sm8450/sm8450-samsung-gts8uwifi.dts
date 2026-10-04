@@ -2,8 +2,8 @@
 /*
  * Samsung Galaxy Tab S8 Ultra Wi-Fi (SM-X900), codename "gts8uwifi".
  *
- * EXPERIMENTAL: framebuffer console, USB2 ACM shell and the postmarketOS
- * initramfs work on X900. Native display is the current hardware test;
+ * EXPERIMENTAL: framebuffer console, USB2 ACM shell, the postmarketOS
+ * initramfs, the native display and the touchscreen work on X900;
  * the other peripheral descriptions remain disabled pending validation.
  * Stock source: DYDC Waipio v2 + GTS8UWIFI rev-5 overlay; see
  * device-facts/gts8uwifi/memory.md and display.md. The inherited X800
@@ -602,8 +602,16 @@
 
 		vdd-bob-supply = <&vph_pwr>;
 
+		/*
+		 * X900 stock leaves BOB at its 3.296 V init voltage (range
+		 * 3.008-3.96 V) and its regulator framework raises the parent
+		 * for the 3.3 V touch AVDD below. The mainline RPMh driver does
+		 * not propagate LDO headroom, so the inherited 3.008 V minimum
+		 * made Linux lower BOB to 3.032 V at boot and left L7C in
+		 * dropout near 3.0 V. Hold the stock init voltage instead.
+		 */
 		vreg_bob: bob {
-			regulator-min-microvolt = <3008000>;
+			regulator-min-microvolt = <3296000>;
 			regulator-max-microvolt = <3960000>;
 			regulator-initial-mode = <RPMH_REGULATOR_MODE_AUTO>;
 		};
@@ -615,27 +623,26 @@
 		};
 
 		/*
-		 * Touchscreen rails, from the stock DTB's touchscreen@49:
-		 *   tsp_avdd_ldo-supply -> pm8350c L7C, 3.3 V,     regulator-boot-on
-		 *   tsp_io_ldo-supply   -> pm8350c L8C, 1.848 V,   regulator-boot-on
+		 * Touchscreen rails, from the X900 rev-5 stock DTB's
+		 * touchscreen@5d (the X800 used a 3.0-3.3 V range and 1.848 V):
+		 *   tsp_avdd_ldo-supply -> pm8350c L7C, 3.3 V, regulator-boot-on
+		 *   tsp_io_ldo-supply   -> pm8350c L8C, 1.8 V, regulator-boot-on
 		 * Parent supplies are already declared above (l7 via
 		 * vdd-l3-l4-l5-l7-l13, l8 via vdd-l2-l8).
 		 */
 		vreg_l7c_3p3: ldo7 {
 			/*
-			 * Measured on-device: vreg_bob runs at 3.032 V, and this
-			 * LDO is parented to it (vdd-l3-l4-l5-l7-l13-supply).
-			 * A fixed 3.3 V request cannot be satisfied from a
-			 * 3.03 V input, so allow a range instead of pinning it.
+			 * Stock requests 3.3 V; 3.296 V is the nearest 8 mV
+			 * PLDO step and equals the BOB input, as on stock.
 			 */
-			regulator-min-microvolt = <3000000>;
-			regulator-max-microvolt = <3300000>;
+			regulator-min-microvolt = <3296000>;
+			regulator-max-microvolt = <3296000>;
 			regulator-initial-mode = <RPMH_REGULATOR_MODE_HPM>;
 		};
 
 		vreg_l8c_1p8: ldo8 {
-			regulator-min-microvolt = <1848000>;
-			regulator-max-microvolt = <1848000>;
+			regulator-min-microvolt = <1800000>;
+			regulator-max-microvolt = <1800000>;
 			regulator-initial-mode = <RPMH_REGULATOR_MODE_HPM>;
 		};
 
@@ -888,8 +895,8 @@
 
 	/*
 	 * Touchscreen attention/IRQ line. X900 stock berlin_attn_irq state:
-	 * GPIO46, input, bias-disable. The Goodix node stays disabled for the
-	 * first boot until the Samsung PID-6936 16-byte event quirk is carried.
+	 * GPIO46, input, bias-disable. The Goodix node was disabled for first
+	 * boot; the Samsung PID-6936 16-byte event quirk is now carried.
 	 * No drive-strength is set in stock either.
 	 */
 	ts_irq_default: ts-irq-default-state {
@@ -1458,10 +1465,10 @@
  *
  * Upstream Goodix Berlin uses the goodix,gt9916 binding for this controller
  * family. Samsung firmware PID 6936 emits a 16-byte point format despite
- * advertising the upstream 8-byte layout, so the node remains disabled for
- * the first boot until the Samsung-event parser patch is carried into the
- * kernel package. Keeping i2c8/GPI enabled is intentional and already proven
- * by the X800 port.
+ * advertising the upstream 8-byte layout. The node stayed disabled for
+ * first boot; goodix-berlin-samsung-events.patch now selects the Samsung
+ * parser by firmware PID. Keeping i2c8/GPI enabled is intentional and
+ * already proven by the X800 port.
  */
 /*
  * GPI DMA engine for QUP wrapper 1. i2c8 declares
@@ -1711,6 +1718,15 @@
 	status = "okay";
 };
 
+/*
+ * X900 stock qupv3_se8_i2c_active: GPIO28/29, qup8, 2 mA, pull-up. The
+ * sm8450.dtsi state only selects the function.
+ */
+&qup_i2c8_data_clk {
+	drive-strength = <2>;
+	bias-pull-up;
+};
+
 &i2c8 {
 	/*
 	 * i2c8 NEEDS ITS GPI DMA CONTROLLER ENABLED (see &gpi_dma1 below).
@@ -1754,9 +1770,18 @@
 
 		touchscreen-size-x = <1848>;
 		touchscreen-size-y = <2960>;
+		/*
+		 * The controller reports the panel's portrait frame (stock
+		 * sec,max_coords 1848 x 2960) while scanout is landscape.
+		 * Corner taps on the tablet read (1821, 32) at the landscape
+		 * top-left, (1813, 2934) top-right, (31, 2916) bottom-right
+		 * and (55, 59) bottom-left: invert X, then swap the axes.
+		 */
+		touchscreen-inverted-x;
+		touchscreen-swapped-x-y;
 
-		/* Enable after carrying the Samsung PID-6936 16-byte event patch. */
-		status = "disabled";
+		/* Samsung event parser is selected by the resident firmware PID. */
+		status = "okay";
 	};
 };
 
@@ -2155,10 +2180,6 @@
  * staged under the gts8uwifi namespace. Keep these nonessential subsystems
  * off until the core boot/UFS/display path is proven.
  */
-&i2c8 {
-	status = "disabled";
-};
-
 &pcie0 {
 	status = "disabled";
 };
