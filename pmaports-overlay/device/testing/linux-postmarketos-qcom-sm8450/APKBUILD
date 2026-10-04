@@ -8,7 +8,7 @@ maintainer="Aaron <aaronsb@gmail.com>"
 _flavor="postmarketos-qcom-sm8450"
 pkgname=linux-$_flavor
 pkgver=7.2
-pkgrel=80
+pkgrel=81
 pkgdesc="Mainline kernel for Qualcomm SM8450 (Waipio) devices"
 arch="aarch64"
 _carch="arm64"
@@ -45,6 +45,7 @@ source="
 	goodix-berlin-samsung-events.patch
 	arm-smmu-qcom-sm8450-mdss-identity.patch
 	dpu-core-clk-keep-opp-vote.patch
+	a6xx-fix-stale-rpmh-votes.patch
 	sc8280xp-mi2s-codec-fmt-sysclk.patch
 	sm8450-camss.patch
 	hi847-of.patch
@@ -163,6 +164,7 @@ e081f10b88cb67df2f9653a117c5fcc8a5b98d54ddf2a29217d573331b647b55d17fe7dad1a01d02
 8b764b95b29550d8dbfeaa5ed1e0a4b837dcd1ba7669c33c3c384aaf442a731beeb483a604534aa853b33842c86729d8fa313ece1701bbe275ee6fd2b49760e4  goodix-berlin-samsung-events.patch
 2d0740f716cf55abdb221fc62f72c1bdc517c462801259cfb534aa0e737a367d4c7e63e18e6c21bb3c9fdd936df34e3482594d9f30b2fce97451e2e611e98c5b  arm-smmu-qcom-sm8450-mdss-identity.patch
 f508811b55e6f49e9d4a7cf4c066170bd38dc68b7aec6e89c0236fb7125bf03f39ec261d45e580a3e6858d73c79d78df0bb3ac47e80865fc1c85602ec4488b57  dpu-core-clk-keep-opp-vote.patch
+3d17427bd0e9143320a28aedeeb73c4a6ff616253c67c972b6c471e29038eba3e79a2f80d5a00eec5b8c7ffba33ea6d2141b68077de3988e47365b41ef267786  a6xx-fix-stale-rpmh-votes.patch
 b0c91048ac0b0fe02973910d1d55878a9d6cb1b3bd1499e7f7b0f1ef17a42ab068345a046c3186ecdabb08e93524f271023868287ba564be1e51581bddb48da7  sc8280xp-mi2s-codec-fmt-sysclk.patch
 b5f29fe42d4c910d59052e350b54583466f4988e0bbe5ac35135d20d952fc9e07c0cd5a5fc02bb30463d9287f7529d1beccaeff0e067fc33bbeadcca911987f1  sm8450-camss.patch
 222628f89724b98ab1c3f9f9c8cf99989d38c13c9e53d98f893233be6b7c2391b44d67a0d66d39e7ba14532c01aba34276750301a980b175d2fc1d03a649439f  hi847-of.patch
