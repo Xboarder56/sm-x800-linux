@@ -225,6 +225,13 @@ and the cover and S Pen hall switches on TLMM 169 and 23, all as the stock
 X900 tree has them. The device registers and reports the cover switch open
 and the pen switch set. Nobody has pressed the key or moved a magnet yet.
 
+Kernel package `7.2-r74` enables the S Pen digitizer. The stock X900 node
+has it where the X800 does: Wacom W90xx at 0x56 on the `i2c@a98000` pins
+(TLMM 52/53), interrupt 51, flash-mode 54, pen-detect 155, supply switch 167,
+and the same `wacom,invert`. The driver identifies firmware `4010` with a
+31376 x 19589 coordinate range, 4096 pressure levels and tilt, and registers
+`Wacom WEZ01 S Pen`. No pen has touched the screen under Linux yet.
+
 `poweroff` with the USB cable attached comes straight back up: the bootloader
 powers the tablet on when a charger is present. Unplugged, it stays off and
 the power button starts it. No kernel change is involved; a PS_HOLD rewrite

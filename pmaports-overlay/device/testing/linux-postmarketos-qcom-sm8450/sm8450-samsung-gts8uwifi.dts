@@ -2262,7 +2262,7 @@
  * mode only. No charger reference keeps the Type-C driver's PD requests at
  * 5 V; no VBUS regulator reference can enable the OTG boost. Charger and
  * gauge setup remain disabled until their X900 battery data is validated.
- * Amplifiers, input peripherals and sensors are separate bring-up stages.
+ * The amplifiers and the VA macro wait for the audio bring-up stage.
  */
 &i2c4 { status = "disabled"; };
 &i2c5 {
@@ -2291,8 +2291,6 @@
 	fuel-gauge@36 { status = "disabled"; };
 };
 &i2c18 { status = "disabled"; };
-&wacom_i2c { status = "disabled"; };
-&wacom_avdd { status = "disabled"; };
 &vamacro { status = "disabled"; };
 &usb_1_dwc3_hs { /delete-property/ remote-endpoint; };
 &max77705_typec_hs { /delete-property/ remote-endpoint; };
