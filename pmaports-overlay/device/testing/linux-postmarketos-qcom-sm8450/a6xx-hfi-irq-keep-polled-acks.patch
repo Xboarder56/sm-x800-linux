@@ -1,0 +1,92 @@
+drm/msm/a6xx: stop the HFI interrupt taking polled acknowledges
+
+The GMU reports the replies to HFI messages and to OOB requests through
+bits of GMU2HOST_INTR_INFO, and the driver polls that register for them.
+The HFI interrupt is only meant for the firmware fault bit, but
+a6xx_hfi_irq() writes back everything it reads, so when it runs it also
+clears a reply that its waiter has not seen yet. The waiter then times
+out with the reply sitting in the queue, and the next message trips over
+it:
+
+  a6xx_hfi_wait_for_msg_interrupt: Message HFI_H2F_MSG_GX_BW_PERF_VOTE
+    id 282 timed out waiting for response
+  a6xx_hfi_send_msg: Unexpected message id 282 on the response queue
+
+The handler is not supposed to run at all outside a fault, but it does.
+GMU2HOST_INTR_MASK reads 0 when the GMU powers up, everything unmasked,
+and a6xx_gmu_resume() does not write it until the boot messages have been
+exchanged. disable_irq() in the previous suspend is lazy, so the replies
+to those messages raise the line. On the Galaxy Tab S8 Ultra (Adreno 730)
+the handler was then entered 11 to 300 us after enable_irq(), which is
+when a6xx_gmu_resume() sends its frequency vote.
+
+Measured with a client that lets the GPU runtime suspend and then asks
+for MSM_PARAM_TIMESTAMP, one GMU resume per query. In 800 resumes the
+handler ran 112 times, found the message queue bit set 12 times, and the
+log has exactly 12 timed out votes, each a one second stall. It needs the
+CPUs to be allowed into their power-collapse idle state: with cpuidle
+state1 disabled 1200 resumes had none.
+
+Mask the HFI interrupts before the firmware starts, and only acknowledge
+the bits the handler deals with. Either change alone gave 600 resumes
+without a stall where the unchanged driver had 12 in 800; with the mask
+written early the handler did not run once.
+
+A compositor that reads the GPU timestamp every frame resumes the GMU
+after each 66 ms of idle, so on a desktop this was a visible freeze every
+few seconds. The OOB acknowledge bits are in the same register and
+"Timeout waiting for GMU OOB set GPU_SET" preceded the hangcheck recovery
+that took the Plasma session down.
+
+Generated from the pinned Linux 7.2 source with
+a6xx-fix-stale-rpmh-votes.patch applied. Not yet submitted upstream.
+
+--- a/drivers/gpu/drm/msm/adreno/a6xx_gmu.c
++++ b/drivers/gpu/drm/msm/adreno/a6xx_gmu.c
+@@ -59,12 +59,22 @@
+ 	return IRQ_HANDLED;
+ }
+ 
++#define A6XX_HFI_IRQ_MASK \
++	(A6XX_GMU_GMU2HOST_INTR_INFO_CM3_FAULT)
++
+ static irqreturn_t a6xx_hfi_irq(int irq, void *data)
+ {
+ 	struct a6xx_gmu *gmu = data;
+ 	u32 status;
+ 
++	/*
++	 * The message queue and OOB acknowledge bits of this register are
++	 * polled by whoever is waiting for them. Only take the bits that are
++	 * handled here, or an acknowledge can be cleared before its waiter
++	 * has seen it.
++	 */
+ 	status = gmu_read(gmu, REG_A6XX_GMU_GMU2HOST_INTR_INFO);
++	status &= A6XX_HFI_IRQ_MASK;
+ 	gmu_write(gmu, REG_A6XX_GMU_GMU2HOST_INTR_CLR, status);
+ 
+ 	if (status & A6XX_GMU_GMU2HOST_INTR_INFO_CM3_FAULT) {
+@@ -1063,9 +1073,6 @@
+ 	return 0;
+ }
+ 
+-#define A6XX_HFI_IRQ_MASK \
+-	(A6XX_GMU_GMU2HOST_INTR_INFO_CM3_FAULT)
+-
+ #define A6XX_GMU_IRQ_MASK \
+ 	(A6XX_GMU_AO_HOST_INTERRUPT_STATUS_WDOG_BITE | \
+ 	 A6XX_GMU_AO_HOST_INTERRUPT_STATUS_HOST_AHB_BUS_ERROR | \
+@@ -1356,6 +1363,13 @@
+ 		status = GMU_COLD_BOOT;
+ 	}
+ 
++	/*
++	 * The GMU powers up with all of its HFI interrupts unmasked. The
++	 * replies to the boot messages are polled, so keep the interrupt line
++	 * quiet until the fault interrupt is set up below.
++	 */
++	gmu_write(gmu, REG_A6XX_GMU_GMU2HOST_INTR_MASK, ~0);
++
+ 	ret = a6xx_gmu_fw_start(gmu, status);
+ 	if (ret)
+ 		goto disable_irq;

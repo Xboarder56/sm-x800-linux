@@ -1,11 +1,17 @@
 Backport of stable commit 51fcee9d4140 (first in v7.2.6), unchanged below.
-Drop when pkgver reaches 7.2.6. On the Galaxy Tab S8 Ultra, 7.2.0 without it
-hangs the Adreno 730 under a compositor within half a minute:
+Drop when pkgver reaches 7.2.6. Taken while chasing Adreno 730 hangs on the
+Galaxy Tab S8 Ultra:
 
   a6xx_hfi_wait_for_msg_interrupt: Message HFI_H2F_MSG_GX_BW_PERF_VOTE id 559
     timed out waiting for response
   a6xx_gmu_set_oob: Timeout waiting for GMU OOB set GPU_SET: 0x0
   recover_worker: 07030001: hangcheck recover!
+
+It did not cure them. An idle compositor ran clean for 150 s with it, but
+the same timeouts came back under touch use, and they turned out to be the
+HFI interrupt handler clearing acknowledges that are polled for
+(a6xx-hfi-irq-keep-polled-acks.patch). Kept because it is a stable fix for
+the RPMh stop sequence, which this tablet runs on every GMU suspend.
 
 From 51fcee9d4140b08428bff9a9b2dc85ab74185557 Mon Sep 17 00:00:00 2001
 From: Shivam Rawat <shivrawa@qti.qualcomm.com>
