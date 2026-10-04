@@ -72,6 +72,8 @@ struct s6tuum1 {
 	bool boot_on;
 	/* The running bootloader state was adopted without a reset. */
 	bool adopted;
+	/* The TCON is out of sleep-in and takes DCS commands. */
+	bool awake;
 };
 
 static inline struct s6tuum1 *to_s6tuum1(struct drm_panel *panel)
@@ -202,16 +204,22 @@ static int s6tuum1_amsa24_on(struct s6tuum1 *priv)
  * mode before the PPS. The stock 60 Hz and 120 Hz streams differ only in
  * the refresh select, 0x60 = 0x00 or 0x20, with a 50 ms post-write delay.
  *
- * The stream is sent exactly as stock has it. This TCON is awake once
- * tcon_rdy rises and stock sends it no sleep-out: replaying the sequence by
- * hand, the inherited 0x11 dropped tcon_rdy at once and every later command
- * timed out, which is the dark panel after a reset. TE is likewise running
- * after reset; the inherited two-byte tear-on switched it off, so no tear-on
- * is sent either.
+ * The stream is sent as stock has it, apart from the brightness. This TCON
+ * is awake once tcon_rdy rises and stock sends it no sleep-out: replaying
+ * the sequence by hand, the inherited 0x11 dropped tcon_rdy at once and
+ * every later command timed out, which is the dark panel after a reset. TE
+ * is likewise running after reset; the inherited two-byte tear-on switched
+ * it off, so no tear-on is sent either.
+ *
+ * Stock writes 0x51 = 0x7ff here and follows with its brightness packet.
+ * Display-on would otherwise light the panel at full level until the
+ * backlight core writes its own, so the stored level is sent instead.
  */
 static int s6tuum1_amsa46_on(struct s6tuum1 *priv)
 {
 	struct mipi_dsi_multi_context ctx = { .dsi = priv->dsi };
+	u16 level = priv->panel.backlight->props.brightness;
+	const u8 dbv[] = { 0x51, level & 0xff, level >> 8 };
 
 	mipi_dsi_dcs_write_seq_multi(&ctx, 0xd3, 0x4f);
 	mipi_dsi_dcs_write_seq_multi(&ctx, 0x98, 0x00);
@@ -232,7 +240,7 @@ static int s6tuum1_amsa46_on(struct s6tuum1 *priv)
 	mipi_dsi_dcs_write_seq_multi(&ctx, 0x79, 0x02);
 	mipi_dsi_dcs_write_seq_multi(&ctx, 0xb0, 0x00, 0x03, 0x68);
 	mipi_dsi_dcs_write_seq_multi(&ctx, 0x68, 0x14);
-	mipi_dsi_dcs_write_seq_multi(&ctx, 0x51, 0xff, 0x07);
+	mipi_dsi_dcs_write_buffer_multi(&ctx, dbv, sizeof(dbv));
 	mipi_dsi_dcs_write_seq_multi(&ctx, 0x53, 0x20);
 	if (drm_mode_vrefresh(priv->desc->mode) == 120)
 		mipi_dsi_dcs_write_seq_multi(&ctx, 0x60, 0x20);
@@ -302,8 +310,10 @@ static int s6tuum1_prepare(struct drm_panel *panel)
 	 */
 	priv->adopted = priv->boot_on && s6tuum1_tcon_ready(priv);
 	priv->boot_on = false;
-	if (priv->adopted)
+	if (priv->adopted) {
+		priv->awake = true;
 		return 0;
+	}
 
 	priv->desc->reset(priv);
 	s6tuum1_wait_tcon_ready(priv);
@@ -314,6 +324,7 @@ static int s6tuum1_prepare(struct drm_panel *panel)
 			s6tuum1_power_off(priv);
 		return ret;
 	}
+	priv->awake = true;
 
 	return 0;
 }
@@ -390,6 +401,7 @@ static int s6tuum1_disable(struct drm_panel *panel)
 		mipi_dsi_dcs_enter_sleep_mode_multi(&ctx);
 		mipi_dsi_msleep(&ctx, 100);
 	}
+	priv->awake = false;
 
 	return ctx.accum_err;
 }
@@ -483,7 +495,8 @@ static const struct s6tuum1_panel_desc s6tuum1_amsa46_desc = {
 	.set_refresh = s6tuum1_amsa46_set_refresh,
 	.slice_width = 1480,
 	.slice_height = 132,
-	.default_brightness = 0x5d8,
+	/* Half scale at boot; the 73 % used during bring-up was needlessly bright. */
+	.default_brightness = 0x400,
 	.max_brightness = 0x7ff,
 	.keep_power = true,
 };
@@ -507,6 +520,14 @@ static const struct drm_panel_funcs s6tuum1_panel_funcs = {
 static int s6tuum1_bl_update_status(struct backlight_device *bl)
 {
 	struct mipi_dsi_device *dsi = bl_get_data(bl);
+	struct s6tuum1 *priv = mipi_dsi_get_drvdata(dsi);
+
+	/*
+	 * A panel in sleep-in takes no commands. The level is kept and goes
+	 * out with the init stream and again when the panel is enabled.
+	 */
+	if (!priv->awake)
+		return 0;
 
 	/*
 	 * LSB first: stock gamma_mode2 sends "51 d8 0d" for 0x0dd8, i.e.
