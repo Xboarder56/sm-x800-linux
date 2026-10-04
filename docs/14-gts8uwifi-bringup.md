@@ -198,6 +198,14 @@ the X900 package lacks: the patched daemon and the stock sensor registry
 configs. The audio macros fail to probe behind the ADSP because the sound
 card stays disabled.
 
+Sensors read through the SLPI once the X800 port's patched `hexagonrpcd`
+and the stock sensor configs are in place: accelerometer, light and
+magnetometer in `ssccli`, and `iio-sensor-proxy` reports orientation, tilt,
+lux and a compass heading with the X800 mount matrix. The parts, the readings
+and what is still missing are in
+[sensors](../device-facts/gts8uwifi/sensors.md). In the same system the
+packaged firmware brings up `wlan0` and `hci0` without manual steps.
+
 `poweroff` with the USB cable attached comes straight back up: the bootloader
 powers the tablet on when a charger is present. Unplugged, it stays off and
 the power button starts it. No kernel change is involved; a PS_HOLD rewrite
@@ -298,7 +306,7 @@ deferred.
 | Power | Charger/gauge and battery readings, thermal sensors, idle consumption and system suspend/resume. |
 | Storage/system | UFS filesystem operation and an installed rootfs on it; packaging the microSD boot (gadget service, image creation outside Docker); microSD hotplug. UFS enumeration works and a console rootfs boots from microSD. |
 | Audio | Amplifiers, speakers, microphones and routing on X900. |
-| Other hardware | Sensor readings (the SLPI boots; the registry tree, the patched `hexagonrpcd` and a firmware extractor for the X900 package are missing), cameras and fingerprint reader; audit inherited descriptions before enabling them. |
+| Other hardware | Packaging the sensor stack for X900 (daemon, udev rules, mount matrix, extractor, per-device revision) and a hands-on check of orientation, hall switches and keys; Wi-Fi thermistor conversion; cameras and fingerprint reader. Sensors read through the SLPI on a hand-assembled tree. |
 | Portability | Transfer ABL's live RAM/reservations rather than assuming this DYDC/12 GiB layout for other firmware or capacities. |
 | Submission | Kernel bindings and `dtbs_check`, removal of remaining bring-up workarounds, X800 hardware regression and separate Linux/uniLoader/pmaports submissions. |
 
