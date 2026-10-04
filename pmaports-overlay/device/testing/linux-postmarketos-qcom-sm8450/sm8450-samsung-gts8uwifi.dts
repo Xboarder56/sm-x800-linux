@@ -2101,8 +2101,72 @@
 &gpu {
 	status = "okay";
 
+	/*
+	 * sm8450.dtsi gives the GPU no path to memory, so nothing asks for
+	 * DDR bandwidth on its behalf. Stock votes MASTER_GFX3D to SLAVE_EBI1
+	 * per power level (see &gpu_opp_table below). With the path described
+	 * a GMU resume drops from 16-30 ms to about 9 ms.
+	 */
+	interconnects = <&gem_noc MASTER_GFX3D 0 &mc_virt SLAVE_EBI1 0>;
+	interconnect-names = "gfx-mem";
+
 	zap-shader {
 		firmware-name = "qcom/sm8450/gts8uwifi/a730_zap.mdt";
+	};
+};
+
+/*
+ * DDR bandwidth per GPU frequency, from the stock device tree: each
+ * qcom,gpu-pwrlevel's qcom,bus-freq indexes qcom,bus-table-ddr, whose
+ * entries are in the same kBps unit.
+ */
+&gpu_opp_table {
+	opp-818000000 {
+		opp-peak-kBps = <13085937>;
+	};
+
+	opp-791000000 {
+		opp-peak-kBps = <13085937>;
+	};
+
+	opp-734000000 {
+		opp-peak-kBps = <12484375>;
+	};
+
+	opp-640000000 {
+		opp-peak-kBps = <12484375>;
+	};
+
+	opp-599000000 {
+		opp-peak-kBps = <8171875>;
+	};
+
+	opp-545000000 {
+		opp-peak-kBps = <8171875>;
+	};
+
+	opp-492000000 {
+		opp-peak-kBps = <6074218>;
+	};
+
+	opp-421000000 {
+		opp-peak-kBps = <6074218>;
+	};
+
+	opp-350000000 {
+		opp-peak-kBps = <2136718>;
+	};
+
+	opp-317000000 {
+		opp-peak-kBps = <1761718>;
+	};
+
+	opp-285000000 {
+		opp-peak-kBps = <1761718>;
+	};
+
+	opp-220000000 {
+		opp-peak-kBps = <1761718>;
 	};
 };
 
