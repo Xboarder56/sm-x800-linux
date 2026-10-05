@@ -4,7 +4,7 @@ maintainer="Garrett Beasley <garrettbeasley@icloud.com>"
 pkgname=device-samsung-gts8uwifi
 pkgdesc="Samsung Galaxy Tab S8 Ultra (Wi-Fi) - mainline bring-up (SM8450)"
 pkgver=0.1
-pkgrel=5
+pkgrel=6
 url="https://postmarketos.org"
 license="MIT"
 arch="aarch64"
@@ -16,6 +16,7 @@ depends="
 	android-tools
 	mdev-conf
 	linux-firmware-qcom
+	swclock-offset
 	make-dynpart-mappings
 	device-mapper
 "
@@ -81,7 +82,10 @@ package() {
 
 systemd() {
 	install_if="$pkgname=$pkgver-r$pkgrel systemd"
-	depends="unudhcpd-systemd"
+	# swclock-offset: the PMIC RTC is read only here and reads decades
+	# behind. Its units save the difference to the system clock at
+	# shutdown and apply it at boot, so the time is right without network.
+	depends="unudhcpd-systemd swclock-offset-systemd"
 
 	# USB gadget: built when the UDC appears (usb-gadget.target), with
 	# unudhcpd@usb0 and a serial getty on ttyGS0 pulled in by the unit.
