@@ -1,6 +1,6 @@
 # SM-X900 revision 5: camera evidence
 
-Recorded 2026-10-05 on kernel `7.2.8-r0`. The X800 story is in
+Recorded 2026-10-05 on kernels `7.2.8-r0` through `7.2.8-r3`. The X800 story is in
 [docs/11](../../docs/11-camera.md).
 
 ## The four cameras
@@ -50,7 +50,31 @@ What was checked, all on the front camera unless noted:
 
 So the write master is programmed with the buffers' I/O addresses, sees
 frames, raises no error, the stream is matched to a translation context,
-nothing faults, and the pages stay as they were.
+nothing faults, and the pages stay as they were. The four image addresses
+read from the write master (`0xff000000`, `0xff400000`, `0xff800000`,
+`0xffc00000`) are the four queued buffers' IOVAs, 4 MiB apart, not stale
+values — so the addressing is right.
+
+### Interrupt trace, 2026-10-05 (kernel 7.2.8-r3)
+
+A 30-frame rear capture, counting only `/proc/interrupts` (no register
+reads), showed where the pipeline stops:
+
+| Interrupt | Delta over 30 frames | Meaning |
+|---|---|---|
+| `ac15000.cci` (CCI0) | +1558 | the sensor is configured and polled over I2C |
+| `acb7000.isp_msm_csid2` | +46 | the CSID raises RUP and buf-done, about 1.5 per frame |
+| `acb7000.isp_msm_csiphy*` | 0 | CSIPHY only interrupts on error; none |
+| `acb7000.isp_msm_vfe*` | 0 | the VFE680 ISR is a stub, expected |
+
+`v4l2-ctl` dequeued all 30 buffers at 30.0 fps with full `bytesused`, each
+one entirely zero. So the completion path is whole: the CSID interrupt
+drives `camss_buf_done` → `vfe_buf_done` → `vb2_buffer_done`, which is why
+frames flow at sensor rate. The gap is only that the VFE bus write master,
+though enabled and addressed, never writes beats into DDR. The problem is
+the CSID-to-bus datapath or the bus client's own enable/CGC in the young
+VFE680 code (`vfe_wm_start` programs the client minimally and the ISR does
+nothing), not the buffer handoff, the addresses, the SMMU or the sensor.
 
 Reading VFE registers while the block is not streaming resets the SoC; the
 register dump above was taken only with a capture running. Booting with
@@ -59,4 +83,7 @@ register dump above was taken only with a capture running. Booting with
 Not tried: the same capture on an X800 with the current kernel (its
 frames were last confirmed on a kernel that still booted with the
 bring-up flags); a kernel-side dump of the buffer's mapping and contents;
-the vfe_lite path by itself; libcamera.
+the vfe_lite path by itself; libcamera. The next lead is the bus client
+setup in `camss-vfe-680.c vfe_wm_start` against a downstream VFE680 /
+Titan-480 register trace: the write enable, the CGC override and the
+input mux that routes the CSID RDI stream into write-master 24.
