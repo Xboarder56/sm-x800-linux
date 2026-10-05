@@ -48,6 +48,13 @@ So a board file alone cannot be upstreamed to make linux-firmware work
 here; the board data belongs to the WLAN.HSP.2.0 firmware branch stock
 uses. Putting the complete stock set back restored the 6 GHz link at once.
 
+The stock set can sit beside linux-firmware's files. The firmware loader
+tries a plain name before the same name with `.zst`, and a `board-2.bin`
+that holds only the 20-byte container header stops ath11k matching
+linux-firmware's `board-2.bin.zst`, so it falls back to `board.bin`. With
+both sets present ath11k loaded WLAN.HSP.2.0.c1-00441, associated on 6 GHz
+and delivered 10 of 10 pings.
+
 ## Where stock gets the addresses
 
 Neither radio has an address of its own, and the bootloader does not pass
@@ -55,8 +62,24 @@ one. Stock reads both from the `efs` partition: `init.qcom.rc` sets
 `ro.bt.bdaddr_path` to `/mnt/vendor/efs/bluetooth/bt_addr`, which the
 Bluetooth HAL reads, and `macloader` and Samsung's Wi-Fi HAL read
 `/mnt/vendor/efs/wifi/.mac.info`. Found in the firmware package's vendor
-image; the tablet's own `efs` has not been read. Under Linux `wlan0` gets a
-random locally administered address on each boot and `hci0` has none.
+image.
+
+Device package r8 gives `hci0` an address with `gts8uwifi-bt-addr`. With the
+owner's permission it read this tablet's `efs` once: the partition switched
+read-only at the block layer, mounted "ro without journal", `bluetooth/bt_addr`
+copied to `/var/lib/gts8uwifi/bt_addr`, unmounted, write counter 0. The
+file holds an address in the same form as on the Tab S8+ and `hci0` now
+carries it. Before that, with the step turned off, the controller came up on
+the machine-id fallback address and a 12 s scan found 74 devices. Pairing
+has not been tried.
+
+`wlan0` does not need the factory address. postmarketOS configures
+NetworkManager with `wifi.cloned-mac-address=stable`, so the interface
+uses a per-network address that stays the same across boots
+(`addr_assign_type` 3), as Android does by default. An earlier note here
+that the address was random on every boot was wrong. A udev rule that set
+the factory address on `wlan0` was tried and dropped: NetworkManager
+replaces it.
 
 ## Rails
 
@@ -70,10 +93,12 @@ has only been run with both in place.
 
 ## Not done
 
-- Bluetooth: `hci0` loads its firmware but has no address, as on the X800
-  before its address helper. Stock ships `hpnv21.bin` and `hpnv21g.bin`,
-  which were copied out but not tried.
-- A stable Wi-Fi address; see the section above.
+- Bluetooth pairing and audio. Stock ships `hpnv21.bin` and `hpnv21g.bin`,
+  which were copied out but not tried; the controller runs on
+  linux-firmware's `wcnhpnv21.bin`.
 - Throughput against a local server, roaming, 5 GHz association, suspend.
-- The X900 package does not carry or fetch the stock Wi-Fi files.
+- `gts8uwifi-fw-extract` (device package r9) stages the stock Wi-Fi set. It
+  was run from the firmware package's `NON-HLOS.bin` and `vendor.img`; its
+  default mode, which reads the tablet's own `apnhlos`, `super` and
+  `persist` read-only, has not been run on this tablet.
 - The default regulatory domain leaves all 28 5 GHz channels listen-only.
