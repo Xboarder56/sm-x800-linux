@@ -116,6 +116,63 @@ charger reports `Full` at its 4.30 V limit and the battery carries part
 of the load as it settles (0.5 to 0.8 A out, 26.0 °C). Host mode, VBUS
 out and a charge from a lower state of charge have not been exercised.
 
+## What stock charging does, and what native speed would take
+
+Stock has two charging paths (rev-5 device tree, battery node):
+
+| | Switching charger (MAX77705) | Direct charger (SM5440) |
+|---|---|---|
+| Used with | any PD or legacy source | a PPS source, "45 W" |
+| Input | 9 V, 3.0 A limit, 15 W for PD (`pd_charging_charge_power`) | PPS, 2:1 conversion |
+| Charge current | 3.15 A (`max_charging_current`) | 8.4 A (`dc_step_chg_val_iout`), 22 W step |
+| Float | 4.42 V | 4.42 V |
+
+and a policy around them:
+
+| Battery temperature | Charge current | Float |
+|---|---|---|
+| below 5 C | 1.075 A | 4.42 V |
+| 5 to 15 C | 2.875 A | 4.42 V |
+| 15 to 42 C | 3.15 A | 4.42 V |
+| 42 to 50 C | 3.15 A | 4.20 V |
+| above 50 C, or far below 0 C | none | |
+
+| Cycles | Float |
+|---|---|
+| up to 300 | 4.42 V |
+| 300 | 4.40 V |
+| 400 | 4.38 V |
+| 700 | 4.36 V |
+| 1000 | 4.31 V |
+
+The charger IC's own temperature limits the input to 1.0 A and the charge
+to 1.9 A at 80 C. Direct charging stops at 51 C charger temperature or
+38 C battery temperature and is limited to 2.1 A in, 4.2 A out when warm.
+
+Mainline today: the 9 V, 15 W input is already negotiated, the charge
+current is 2.0 A and the float 4.30 V, with no temperature policy. That is
+about two thirds of stock's ordinary PD rate and stops near 90 %.
+
+To reach stock's ordinary rate (15 W in, 3.15 A, 4.42 V) safely:
+
+1. The temperature bands above. The driver takes one current and one
+   voltage from the battery node. `constant_charge_current` and
+   `input_current_limit` are writable at run time; `constant_charge_voltage`
+   is not, so the warm band's 4.20 V needs a small driver change.
+2. Something to apply them: a guard that reads the gauge's temperature and
+   cycle count and sets current and float, with the device tree's limits
+   staying at today's conservative values so that a stopped guard means
+   slow charging, not unguarded charging.
+3. The age table, from the gauge's cycle count (109 on this tablet).
+4. A watched charge from a low state of charge through termination, with
+   current, voltage and temperature logged, before any of it ships.
+
+The 45 W path is a different size of job: a driver for the SM5440 (none in
+mainline), PPS requests through the MAX77705 CCIC firmware, and the
+regulation loop that steps the source voltage while watching battery
+current, with stock's direct-charging thermal tables. It should not be
+attempted without a way to measure the pack.
+
 ## Open
 
 - A charge from a lower state of charge through to termination has not
