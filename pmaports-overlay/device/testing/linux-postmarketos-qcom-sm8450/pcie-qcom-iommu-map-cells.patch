@@ -1,0 +1,129 @@
+PCI: qcom: read iommu-map entries by the IOMMU's cell count
+
+qcom_pcie_config_sid_1_9_0() fills the controller's BDF to SID table from
+the iommu-map property, which it reads as an array of four-cell entries:
+
+  struct { u32 bdf; u32 phandle; u32 smmu_sid; u32 smmu_sid_len; }
+
+That is one output cell per entry. The SMMU on these SoCs has
+#iommu-cells = <2>, and v7.2.6 changed the SoC device trees to give each
+entry both output cells, stream ID and mask (for sm8450 stable commit
+0ce01e1cd0c3, upstream 9b10e56647fa). The OF core reads either form. This
+function was not changed, so with five-cell entries it reads the second
+entry one cell off, maps the endpoint's requester ID to the wrong stream,
+and the endpoint's DMA is blocked.
+
+On the Galaxy Tab S8 Ultra (SM8450, WCN6855 behind PCIe0) the Wi-Fi chip
+then cannot fetch its firmware and there is no wlan0:
+
+  mhi mhi0: MHI did not load image over BHI, ret: -5
+  ath11k_pci 0000:01:00.0: failed to power up mhi: -110
+
+Found by release: 7.2.4 works, 7.2.6 and 7.2.8 fail, and 7.2.6 booted with
+a device tree built from the 7.2 sm8450.dtsi works. The two decompiled
+device trees differ only in the PCIe iommu-map properties.
+
+Work out the entry size from the IOMMU node's #iommu-cells and accept the
+old one-cell form as well, so the same kernel handles device trees from
+before and after the change. The function is the same in 7.2 and 7.2.8 and
+this applies to both.
+
+Generated from Linux 7.2.8. Not yet submitted upstream; a later kernel may
+carry its own fix, in which case drop this.
+
+--- a/drivers/pci/controller/dwc/pcie-qcom.c
++++ b/drivers/pci/controller/dwc/pcie-qcom.c
+@@ -1117,15 +1117,48 @@
+ 	regulator_bulk_disable(ARRAY_SIZE(res->supplies), res->supplies);
+ }
+ 
++/*
++ * An iommu-map entry is <rid-base phandle output... length>, with as many
++ * output cells as the IOMMU's #iommu-cells says. Device trees written before
++ * the OF core started checking that give a two-cell IOMMU one output cell,
++ * the stream ID alone. Tell the two layouts apart: the map is in the long
++ * form if its length fits and every entry then has the first entry's
++ * phandle where a phandle belongs.
++ */
++static unsigned int qcom_pcie_iommu_map_entry_cells(const u32 *map,
++						    unsigned int nr_cells)
++{
++	struct device_node *np;
++	unsigned int entry, i;
++	u32 cells;
++
++	if (nr_cells < 4)
++		return 4;
++
++	np = of_find_node_by_phandle(map[1]);
++	if (!np)
++		return 4;
++
++	if (of_property_read_u32(np, "#iommu-cells", &cells))
++		cells = 1;
++	of_node_put(np);
++
++	entry = 3 + cells;
++	if (cells < 2 || nr_cells % entry)
++		return 4;
++
++	for (i = 0; i < nr_cells; i += entry)
++		if (map[i + 1] != map[1])
++			return 4;
++
++	return entry;
++}
++
+ static int qcom_pcie_config_sid_1_9_0(struct qcom_pcie *pcie)
+ {
+-	/* iommu map structure */
+-	struct {
+-		u32 bdf;
+-		u32 phandle;
+-		u32 smmu_sid;
+-		u32 smmu_sid_len;
+-	} *map;
++	/* iommu map entry: rid-base, phandle, stream ID, [mask,] length */
++	u32 *map;
++	unsigned int entry;
+ 	void __iomem *bdf_to_sid_base = pcie->parf + PARF_BDF_TO_SID_TABLE_N;
+ 	struct device *dev = pcie->pci->dev;
+ 	u8 qcom_pcie_crc8_table[CRC8_TABLE_SIZE];
+@@ -1146,10 +1179,11 @@
+ 	if (!map)
+ 		return -ENOMEM;
+ 
+-	of_property_read_u32_array(dev->of_node, "iommu-map", (u32 *)map,
++	of_property_read_u32_array(dev->of_node, "iommu-map", map,
+ 				   size / sizeof(u32));
+ 
+-	nr_map = size / (sizeof(*map));
++	entry = qcom_pcie_iommu_map_entry_cells(map, size / sizeof(u32));
++	nr_map = size / (entry * sizeof(u32));
+ 
+ 	crc8_populate_msb(qcom_pcie_crc8_table, QCOM_PCIE_CRC8_POLYNOMIAL);
+ 
+@@ -1157,11 +1191,12 @@
+ 	memset_io(bdf_to_sid_base, 0, CRC8_TABLE_SIZE * sizeof(u32));
+ 
+ 	/* Extract the SMMU SID base from the first entry of iommu-map */
+-	smmu_sid_base = map[0].smmu_sid;
++	smmu_sid_base = map[2];
+ 
+ 	/* Look for an available entry to hold the mapping */
+ 	for (i = 0; i < nr_map; i++) {
+-		__be16 bdf_be = cpu_to_be16(map[i].bdf);
++		const u32 *e = &map[i * entry];
++		__be16 bdf_be = cpu_to_be16(e[0]);
+ 		u32 val;
+ 		u8 hash;
+ 
+@@ -1184,7 +1219,7 @@
+ 		}
+ 
+ 		/* BDF [31:16] | SID [15:8] | NEXT [7:0] */
+-		val = map[i].bdf << 16 | (map[i].smmu_sid - smmu_sid_base) << 8 | 0;
++		val = e[0] << 16 | (e[2] - smmu_sid_base) << 8 | 0;
+ 		writel(val, bdf_to_sid_base + hash * sizeof(u32));
+ 	}
+ 

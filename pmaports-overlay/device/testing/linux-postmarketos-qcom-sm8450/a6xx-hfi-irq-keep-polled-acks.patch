@@ -38,8 +38,9 @@ few seconds. The OOB acknowledge bits are in the same register and
 "Timeout waiting for GMU OOB set GPU_SET" preceded the hangcheck recovery
 that took the Plasma session down.
 
-Generated from the pinned Linux 7.2 source with
-a6xx-fix-stale-rpmh-votes.patch applied. Not yet submitted upstream.
+Generated from Linux 7.2 with the stable RPMh stop fix (51fcee9d4140,
+first in v7.2.6) applied; it applies unchanged to 7.2.8, which does not
+have this fix. Not yet submitted upstream.
 
 --- a/drivers/gpu/drm/msm/adreno/a6xx_gmu.c
 +++ b/drivers/gpu/drm/msm/adreno/a6xx_gmu.c

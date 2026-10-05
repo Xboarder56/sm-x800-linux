@@ -1,5 +1,5 @@
 # Reference: <https://postmarketos.org/vendorkernel>
-# Kernel: vanilla mainline (torvalds v7.2 release tarball), built like the
+# Kernel: vanilla mainline (the 7.2.y stable release tarball), built like the
 # archived linux-postmarketos-qcom-sm8350 package. Config is generated from
 # the tree's arm64 defconfig + the sm8450.config fragment we carry (taken
 # from sm8450-mainline/linux, which mainline never gained), then a small
@@ -7,8 +7,8 @@
 maintainer="Aaron <aaronsb@gmail.com>"
 _flavor="postmarketos-qcom-sm8450"
 pkgname=linux-$_flavor
-pkgver=7.2
-pkgrel=90
+pkgver=7.2.8
+pkgrel=0
 pkgdesc="Mainline kernel for Qualcomm SM8450 (Waipio) devices"
 arch="aarch64"
 _carch="arm64"
@@ -44,8 +44,8 @@ source="
 	panel-samsung-s6tuum1.c
 	goodix-berlin-samsung-events.patch
 	arm-smmu-qcom-sm8450-mdss-identity.patch
+	pcie-qcom-iommu-map-cells.patch
 	dpu-core-clk-keep-opp-vote.patch
-	a6xx-fix-stale-rpmh-votes.patch
 	a6xx-hfi-irq-keep-polled-acks.patch
 	sc8280xp-mi2s-codec-fmt-sysclk.patch
 	sm8450-camss.patch
@@ -153,7 +153,7 @@ package() {
 }
 
 sha512sums="
-47e63679363261a864d271277340a6f2d45f544e1a056be4159df081f4f6537d0efa865c4af26611ab33a3079ee65db88ec2f6bc0e5fff43e0c043cde0cd91e1  linux-7.2.tar.xz
+f5d9e366f026dba2853f48ea81d3a0cd9ecad1462aba52fbc160c5cdd3a3c657f0f008e1dd07ddfb0a05047421223ef6c1da8e43d47c85f11c71b6bd30ce0213  linux-7.2.8.tar.xz
 ab2220a83fa26d635d470c8d8e80ac6cc1afffc8deb058f57f498accb70c0d82caaa5d05e926b16e56ae1dbbbbcab9e603df2fbf4eb6493220dbc3083fc80781  sm8450.config
 adb8d1bcbf19bd8f6a55e715372c7ecf1a3f33425ae0b43700c338873eb6b8338adaf2dc275bb509a3eaa0abaea3374e4a1f4c038e540e1327a43800070a3cab  pmos.config
 e2bb4e09969eedf0110e3aef24cd70bb215fb4e9a2dbd7a428f2439aa89630ae33098fe8387daaf2581abbaeedccda981450d3a6a449ce4c3ad314683c02e503  sm8450-samsung-gts8pwifi.dts
@@ -164,9 +164,9 @@ e081f10b88cb67df2f9653a117c5fcc8a5b98d54ddf2a29217d573331b647b55d17fe7dad1a01d02
 4285bd63eb993bdd5ebc8ef2a4655c98a8727fc6d6f7cf9e4d9ee6b34afcbf331c73d46aa21fd7f90f1d65d212bd9245305041a66fef8c4986b8226c313a6620  panel-samsung-s6tuum1.c
 8b764b95b29550d8dbfeaa5ed1e0a4b837dcd1ba7669c33c3c384aaf442a731beeb483a604534aa853b33842c86729d8fa313ece1701bbe275ee6fd2b49760e4  goodix-berlin-samsung-events.patch
 2d0740f716cf55abdb221fc62f72c1bdc517c462801259cfb534aa0e737a367d4c7e63e18e6c21bb3c9fdd936df34e3482594d9f30b2fce97451e2e611e98c5b  arm-smmu-qcom-sm8450-mdss-identity.patch
+c0733a0f396b513874777b7398c4b2ec6d9547717ef2e7b261cc8c4f984c2a859718f05f1f1cefd93b4cc5fb1c3eb578485d5b45abf0a9198e3538c0d686f9fa  pcie-qcom-iommu-map-cells.patch
 f508811b55e6f49e9d4a7cf4c066170bd38dc68b7aec6e89c0236fb7125bf03f39ec261d45e580a3e6858d73c79d78df0bb3ac47e80865fc1c85602ec4488b57  dpu-core-clk-keep-opp-vote.patch
-6d5e47718342ec539dbc78d4ff9a801ae6951b8453b39e5bf8103abc6598c72aa55215949e4e604a12236d24af48096cbbcb858afdf355928de00f495bab0f1e  a6xx-fix-stale-rpmh-votes.patch
-d67b2f7d556864c61ae91cee20eed75373e2899b97447d3a715f8607446a9de10da16ceced9992fec0c7f140bb29629b62a00970757996a14d7a473d9f3da12a  a6xx-hfi-irq-keep-polled-acks.patch
+38c49e167dff621260e664b372b5fa84c91cff992e89f4390755c42bcfe83097cd65d1e7264449fc3d7e93c36a17d25d565fdf3c1765e32fe5b1d9a9931ae72a  a6xx-hfi-irq-keep-polled-acks.patch
 b0c91048ac0b0fe02973910d1d55878a9d6cb1b3bd1499e7f7b0f1ef17a42ab068345a046c3186ecdabb08e93524f271023868287ba564be1e51581bddb48da7  sc8280xp-mi2s-codec-fmt-sysclk.patch
 b5f29fe42d4c910d59052e350b54583466f4988e0bbe5ac35135d20d952fc9e07c0cd5a5fc02bb30463d9287f7529d1beccaeff0e067fc33bbeadcca911987f1  sm8450-camss.patch
 222628f89724b98ab1c3f9f9c8cf99989d38c13c9e53d98f893233be6b7c2391b44d67a0d66d39e7ba14532c01aba34276750301a980b175d2fc1d03a649439f  hi847-of.patch
