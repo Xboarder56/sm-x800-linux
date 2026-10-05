@@ -1,0 +1,19 @@
+# Keep the four CS35L45 speaker amplifiers out of runtime suspend.
+#
+# cs35l45_runtime_suspend() hibernates the part and switches its regmap to
+# cache-only. On resume the cache is synced back, but cs35l45_set_pll()
+# short-circuits when the *cached* REFCLK_INPUT already holds the target
+# frequency id, so after a hibernate cycle the driver believes the PLL is
+# programmed while the part came back with it cleared. The amplifier then
+# never locks to the bit clock and stays silent. (Observed on the Tab S9
+# Ultra port with the same amps; same driver here.)
+#
+# X900: the X800 form of this rule, the "add" line alone, held only the
+# amplifier at 0x30. The add event is sent before the driver is bound, so
+# DRIVERS only matches when the probe wins the race with udev, and the
+# other three stayed on "auto" and spent most of their time suspended.
+# Match the bind event as well, where the driver is known. Whether a
+# hibernate cycle silences these amplifiers on 7.2 was not seen: after
+# 26 minutes suspended, all four had identical registers while playing.
+ACTION=="add", SUBSYSTEM=="i2c", DRIVERS=="cs35l45", ATTR{power/control}="on"
+ACTION=="bind", SUBSYSTEM=="i2c", DRIVER=="cs35l45", ATTR{power/control}="on"
