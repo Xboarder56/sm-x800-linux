@@ -80,10 +80,29 @@ Reading VFE registers while the block is not streaming resets the SoC; the
 register dump above was taken only with a capture running. Booting with
 `iommu.passthrough=1` did not reach a shell.
 
-Not tried: the same capture on an X800 with the current kernel (its
-frames were last confirmed on a kernel that still booted with the
-bring-up flags); a kernel-side dump of the buffer's mapping and contents;
-the vfe_lite path by itself; libcamera. The next lead is the bus client
-setup in `camss-vfe-680.c vfe_wm_start` against a downstream VFE680 /
-Titan-480 register trace: the write enable, the CGC override and the
-input mux that routes the CSID RDI stream into write-master 24.
+### Tested: the VFE480 bus-client writes the 680 omits (no change)
+
+The working `camss-vfe-480.c` (SM8250) does two things in `vfe_wm_start`
+that `camss-vfe-680.c` does not: it writes `WM_CGC_OVERRIDE_ALL`
+(`0x3ffffff`) to the bus CGC-override register to stop clock-gating the
+bus input, and it sets the write-master mode to `MIPI_RAW` rather than
+only the enable bit. The two drivers' bus register maps align exactly
+(680 bus base `0xc00`, CGC at `+0x08` = `0xc08`, WM block at `+0x200`),
+so a patch added both to the 680 (kept in
+`root-build/camera-leads/camss-vfe-680-wm-bus-enable.patch`). Built as
+`7.2.8-r4` and captured: the write master is still never written, every
+byte of every frame is still zero. So the gap is not the bus client's
+clock gate or mode. The patch is not committed.
+
+That leaves the step before the write master: the CSID RDI output is
+timed correctly (it drives buf-done) but its pixel stream is not reaching
+write-master 24, or a VFE-top input/module config that connects them is
+missing. The next leads, in order: the CSID680 RDI output / DT_ID routing
+versus `camss-csid-gen2.c`; any VFE-top CGC or input-mux the 480 enable
+path has and the 680 lacks; then a kernel-side dump of the WM
+`ADDR_STATUS`/beat counters during a stream (needs care — idle VFE
+register reads reset the SoC). An X800 capture on the current kernel
+would also say whether this is X900-specific or the shared 680 state.
+
+Not tried: the X800 comparison; a kernel-side dump of the buffer mapping
+and contents; the vfe_lite path by itself; libcamera.
