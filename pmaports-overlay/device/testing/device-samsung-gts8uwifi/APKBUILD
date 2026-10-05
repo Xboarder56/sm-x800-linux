@@ -4,7 +4,7 @@ maintainer="Garrett Beasley <garrettbeasley@icloud.com>"
 pkgname=device-samsung-gts8uwifi
 pkgdesc="Samsung Galaxy Tab S8 Ultra (Wi-Fi) - mainline bring-up (SM8450)"
 pkgver=0.1
-pkgrel=8
+pkgrel=9
 url="https://postmarketos.org"
 license="MIT"
 arch="aarch64"
@@ -17,6 +17,7 @@ depends="
 	mdev-conf
 	linux-firmware-qcom
 	linux-firmware-qca
+	linux-firmware-ath11k
 	bluez-btmgmt
 	swclock-offset
 	hexagonrpcd>=0.5.0_git20260824
@@ -46,6 +47,7 @@ source="
 	bt-addr.conf
 	bt-addr.service
 	90-gts8uwifi-bt-addr.rules
+	fw-extract.sh
 "
 
 build() {
@@ -108,6 +110,17 @@ package() {
 		"$pkgdir"/usr/bin/gts8uwifi-bt-addr
 	install -Dm644 "$srcdir"/bt-addr.conf \
 		"$pkgdir"/etc/conf.d/gts8uwifi-bt-addr
+
+	# Extractor for device-signed blobs (zap shader, DSP images), the
+	# stock Wi-Fi firmware set and the proprietary sensor registry
+	# configs: we ship the TOOL, the user dumps the firmware from their
+	# own device or from the stock firmware package. See the script.
+	# make-dynpart-mappings and device-mapper are for its read of super.
+	# linux-firmware-ath11k gives a first boot some Wi-Fi before the
+	# extractor has run; on this tablet that is 2.4 GHz with most frames
+	# lost, and the extracted set takes over from it.
+	install -Dm755 "$srcdir"/fw-extract.sh \
+		"$pkgdir"/usr/bin/gts8uwifi-fw-extract
 }
 
 systemd() {
@@ -164,4 +177,5 @@ b9f0d46c2da85c5777664faa7aa14c4bbe03cf63213a601b8ce43f988ab3b921072202e27886422b
 8b1400fc00e4e721e3d4f277934626bf2d6098ff7e7da190c97c33c8c7dbb84a20807a7d1858144f09f7678515b9b013a4d0a21433ea0562f6217bf1201122ca  bt-addr.conf
 06e01c42eec2a5ae0c3834ab6cefde663322d3d6328ea45a4f627806f41704274d6982fe12a19553fa4fc8d9a7c25599aa30a9754ecad4b5e87201b10b928164  bt-addr.service
 1b694c81a52030b15b08a88bc485dce2dcaf40f5dc8da5b45be7715adcf5c33b9647a1cbd268acb280d30ac958589858ecfca65a275c9e442b8a4faa7afc787a  90-gts8uwifi-bt-addr.rules
+40c3b32fe5866e1f1f6cd76b9dd8e1ad2979a3d335c971ef1500aae77ced0a9cffc00e7f719307cafd7c44ac71c355e7e537522e34dd59322a918919d2e82731  fw-extract.sh
 "
