@@ -1066,6 +1066,10 @@
  * software; stock's hw-strobe on PM8350C GPIO 1 is unused. Two sources
  * share led-max-microamp, so 500 mA here is 250 mA per channel at full
  * torch brightness.
+ *
+ * X900: the rev-5 stock tree has the same binding and limits (rear light
+ * on flash_0 + flash_1, torch_0 + torch_1, switch_2; 500 mA, 1500 mA,
+ * 1280 ms), so the node is used as inherited.
  */
 &pm8350c_flash {
 	status = "okay";
@@ -2357,10 +2361,6 @@
 };
 
 &i2c2 {
-	status = "disabled";
-};
-
-&pm8350c_flash {
 	status = "disabled";
 };
 
