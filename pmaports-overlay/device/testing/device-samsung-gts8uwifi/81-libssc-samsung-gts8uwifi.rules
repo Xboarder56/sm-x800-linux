@@ -1,0 +1,8 @@
+# iio-sensor-proxy with libssc: accelerometer mount matrix. The panel scans out
+# landscape-native (2960x1848), so landscape with the camera edge up is "normal".
+# The Tab S8+ package's matrix, measured there on 2026-09-22: raw +X = camera
+# edge up, raw +Y = camera edge right, +Z = screen up. X900: not re-measured
+# axis by axis; with this matrix monitor-sensor reports "normal" with the
+# tablet in landscape, and the owner saw the Plasma desktop rotate the right
+# way in both directions with touch still aligned (2026-10-04).
+SUBSYSTEM=="misc", KERNEL=="fastrpc-*", ENV{ACCEL_MOUNT_MATRIX}+="0, 1, 0; -1, 0, 0; 0, 0, 1"

@@ -4,7 +4,7 @@ maintainer="Garrett Beasley <garrettbeasley@icloud.com>"
 pkgname=device-samsung-gts8uwifi
 pkgdesc="Samsung Galaxy Tab S8 Ultra (Wi-Fi) - mainline bring-up (SM8450)"
 pkgver=0.1
-pkgrel=6
+pkgrel=7
 url="https://postmarketos.org"
 license="MIT"
 arch="aarch64"
@@ -17,6 +17,10 @@ depends="
 	mdev-conf
 	linux-firmware-qcom
 	swclock-offset
+	hexagonrpcd>=0.5.0_git20260824
+	hexagonrpcd-udev
+	libssc
+	iio-sensor-proxy
 	make-dynpart-mappings
 	device-mapper
 "
@@ -33,6 +37,9 @@ source="
 	usb-gadget.sh
 	usb-gadget.service
 	80-gts8uwifi.preset
+	81-libssc-samsung-gts8uwifi.rules
+	90-gts8uwifi-hexagonrpcd-sdsp.rules
+	hexagonrpcd-sdsp-sensor-tree.conf
 "
 
 build() {
@@ -78,6 +85,13 @@ package() {
 	# one configfs gadget. The unit is in -systemd.
 	install -Dm755 "$srcdir"/usb-gadget.sh \
 		"$pkgdir"/usr/bin/gts8uwifi-usb-gadget
+
+	# Sensors: accelerometer mount matrix for iio-sensor-proxy's libssc
+	# backend, keyed on the FastRPC node as device-fairphone-fp4 does.
+	# hexagonrpcd is the port's patched build (pmaports-overlay/temp);
+	# the version floor keeps Alpine's 0.4.0 from satisfying it.
+	install -Dm644 "$srcdir"/81-libssc-samsung-gts8uwifi.rules \
+		"$pkgdir"/usr/lib/udev/rules.d/81-libssc-samsung-gts8uwifi.rules
 }
 
 systemd() {
@@ -85,7 +99,8 @@ systemd() {
 	# swclock-offset: the PMIC RTC is read only here and reads decades
 	# behind. Its units save the difference to the system clock at
 	# shutdown and apply it at boot, so the time is right without network.
-	depends="unudhcpd-systemd swclock-offset-systemd"
+	depends="unudhcpd-systemd swclock-offset-systemd
+		hexagonrpcd-systemd iio-sensor-proxy-systemd"
 
 	# USB gadget: built when the UDC appears (usb-gadget.target), with
 	# unudhcpd@usb0 and a serial getty on ttyGS0 pulled in by the unit.
@@ -99,6 +114,14 @@ systemd() {
 	# makes the state read what it is.
 	install -Dm644 "$srcdir"/80-gts8uwifi.preset \
 		"$subpkgdir"/usr/lib/systemd/system-preset/80-gts8uwifi.preset
+
+	# Sensor hub: start hexagonrpcd-sdsp when /dev/fastrpc-sdsp appears
+	# (the unit's path condition is evaluated before the SLPI boots), and
+	# only once the served sensor tree has been built (see the drop-in).
+	install -Dm644 "$srcdir"/90-gts8uwifi-hexagonrpcd-sdsp.rules \
+		"$subpkgdir"/usr/lib/udev/rules.d/90-gts8uwifi-hexagonrpcd-sdsp.rules
+	install -Dm644 "$srcdir"/hexagonrpcd-sdsp-sensor-tree.conf \
+		"$subpkgdir"/usr/lib/systemd/system/hexagonrpcd-sdsp.service.d/10-gts8uwifi-sensor-tree.conf
 }
 sha512sums="
 7f6218a6e7d200604dc239c5602dc367fd1cdf8b8c171b5305d18f3c8265f72c4fcd1065369f55ba15b4e5a8e998be4085a7229a85a6763b646e7564504e0758  deviceinfo
@@ -111,4 +134,7 @@ fb4e1817acb88db675c298aa730826ac88068a5b47c70ee3d14af95a38905f73c39696ed2c6d2dd2
 0f23e1c5705e2678383fc9f3b745ac369b34f91573096cc57b7afe25db19e09be8eeff7a254229bdbfe957b4b60418b756571ecddd82e4e42e6bb3fc46fb09af  usb-gadget.sh
 ea54f07a6b4c4a32b8fe6a3f10ee44d9da6a02719e0fc29c0a49ba8e9db7410ac6eb48460a45f9cb953f5902aec9056c7cc938eeb3a613055c3e7a40924e220f  usb-gadget.service
 ef4d5f06765c081978fad1d0021051ed1e25b8e59c825ce01a931a0bd75675391b345cb6cfa3e9f955fd7d19f181c030a9cfa646e4a7b8d2dcea6b6cba05d0c1  80-gts8uwifi.preset
+b9f0d46c2da85c5777664faa7aa14c4bbe03cf63213a601b8ce43f988ab3b921072202e27886422b619602eeca26a38cacf97c43f11de872d3b76bde52a8e45f  81-libssc-samsung-gts8uwifi.rules
+2b692d908a426a14a675d40a26b9bba887e5a9313c535aa75d4e718ffe961e8d0bf28558b39656d876511d139013a6fb6429164555388bceb5981f7fe105d1e9  90-gts8uwifi-hexagonrpcd-sdsp.rules
+8cb5be0bf7c385193da98150ec0f3e01b33ced5b9d36dae4ff4206d6d08e900b6f230165c58a8c50220d804ac8f350138d09a8d088016b091adac86ef6851b7d  hexagonrpcd-sdsp-sensor-tree.conf
 "
