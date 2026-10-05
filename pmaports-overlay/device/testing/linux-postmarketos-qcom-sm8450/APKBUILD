@@ -8,7 +8,7 @@ maintainer="Aaron <aaronsb@gmail.com>"
 _flavor="postmarketos-qcom-sm8450"
 pkgname=linux-$_flavor
 pkgver=7.2.8
-pkgrel=2
+pkgrel=3
 pkgdesc="Mainline kernel for Qualcomm SM8450 (Waipio) devices"
 arch="aarch64"
 _carch="arm64"
@@ -20,13 +20,16 @@ options="!strip !check !tracedeps
 makedepends="
 	bison
 	devicepkg-dev
+	elfutils-dev
 	findutils
 	flex
 	installkernel
 	linux-headers
 	openssl-dev
+	pahole
 	perl
 	python3
+	zstd
 "
 
 _config="pmos.config"
@@ -36,6 +39,7 @@ source="
 	https://cdn.kernel.org/pub/linux/kernel/v7.x/linux-$pkgver.tar.xz
 	sm8450.config
 	pmos.config
+	pmos-community.config
 	sm8450-samsung-gts8pwifi.dts
 	sm8450-samsung-gts8uwifi.dts
 	fts1ba90a.c
@@ -119,11 +123,12 @@ prepare() {
 
 	# Generate .config: arm64 defconfig + the SM8450 fragment (staged, since
 	# mainline carries no arch/arm64/configs/sm8450.config), then merge the
-	# pmOS/visibility overrides and let olddefconfig resolve the rest.
+	# pmOS/visibility overrides and what postmarketOS expects of a
+	# community kernel, and let olddefconfig resolve the rest.
 	cp "$srcdir"/sm8450.config arch/arm64/configs/sm8450.config
 	make ARCH="$_carch" defconfig sm8450.config
 	KCONFIG_CONFIG=.config ./scripts/kconfig/merge_config.sh -m \
-		.config "$srcdir"/pmos.config
+		.config "$srcdir"/pmos.config "$srcdir"/pmos-community.config
 	make ARCH="$_carch" olddefconfig
 }
 
@@ -156,6 +161,7 @@ sha512sums="
 f5d9e366f026dba2853f48ea81d3a0cd9ecad1462aba52fbc160c5cdd3a3c657f0f008e1dd07ddfb0a05047421223ef6c1da8e43d47c85f11c71b6bd30ce0213  linux-7.2.8.tar.xz
 8c19568581acf8256d6ed3e2239c324cb1355361c2b9c47fe410081d055f5cf9e2c05d98121fe34093782eec444ce81fd80d71388be65f638b0093e970dea1a3  sm8450.config
 adb8d1bcbf19bd8f6a55e715372c7ecf1a3f33425ae0b43700c338873eb6b8338adaf2dc275bb509a3eaa0abaea3374e4a1f4c038e540e1327a43800070a3cab  pmos.config
+95046ab676dd8dae9f53e1fa8bc0c6e68a1bf5332feb7656e4f53154ca0eb478b3f9ae8c1e3f68924b0e57f5dc5784762acf81d89c8b83bdaeea8d470f76687c  pmos-community.config
 e2bb4e09969eedf0110e3aef24cd70bb215fb4e9a2dbd7a428f2439aa89630ae33098fe8387daaf2581abbaeedccda981450d3a6a449ce4c3ad314683c02e503  sm8450-samsung-gts8pwifi.dts
 617ae3d0b94d5deacb602bbd32bb6df6a05898fd872f50916e16cafc5fe2f833c2535909965703a32c58ff862dd57447b6ebb345795b87241edbf03b09f1f29e  sm8450-samsung-gts8uwifi.dts
 c44407cf686d4cb04477f23b375aa94e5ee0fd6b54223b62d6d4ff3f84e03a0ec3963563cbc4fe775836abb1eb5b0edcf2cf4cb19644b219b06b3ee481175a13  fts1ba90a.c
