@@ -293,6 +293,18 @@ resumes, with no SMMU fault. The regulator flag had no effect here: the two
 rails without a Linux user (PM8350C L13 and PMR735A S1) are RPMh rails whose
 state cannot be read, and the regulator core does not switch those off.
 
+Kernel packages `7.2-r84` to `7.2-r86` enable the PMIC real-time clock and
+the fuel gauge and give the battery node the X900's design capacity. The RTC
+is read only and its alarm wakes the tablet from s2idle and from deep
+suspend; from the Plasma session the power key suspends and wakes it. The
+gauge reports 99 %, 4.33 V and 10,502 mAh full. The charger is still
+disabled; a supervised test of the mainline driver at full charge is in
+[power](../device-facts/gts8uwifi/power.md), along with the suspend results.
+With the owner at the tablet on the fixed kernel the desktop ran without a
+GMU error, the session's sound devices and on-screen keyboard work (the
+keyboard had to be selected in KWin's settings), and the speakers sound
+thin.
+
 Notes from the desktop work: a DRM client closing the last open file on the
 device, render node included, restores the fbdev console and wakes a blanked
 panel. `pmbootstrap install` normally copies the apk signing keys into the
@@ -393,12 +405,12 @@ deferred.
 |---|---|
 | Display | A look at display off/on by eye; stock's delayed display-on and MAX77816 boost programming; the bootloader's varying handoff state; brightness curve and HBM; 60 Hz switching; boots after an unclean reset. |
 | Input | GT6936 pen/palm events, more than two contacts, suspend/resume and firmware update; a keyboard cover and the hall switches changing state. Touch, the S Pen and all three keys work under Plasma. |
-| Graphics | A hands-on desktop session on `7.2-r83` to confirm the GMU timeout fix; sending that fix upstream; a packaged source for the zap shader on X900. Plasma renders on the Adreno 730. |
+| Graphics | Sending the GMU timeout fix upstream; a packaged source for the zap shader on X900. Plasma renders on the Adreno 730 and the owner's session on `7.2-r83` had no GMU error. |
 | Wireless | A way for the X900 package to obtain the stock Wi-Fi firmware set; throughput; a Bluetooth address source and pairing. Wi-Fi works on 6 GHz with the stock set. |
 | USB | Host networking/SSH, host mode, SuperSpeed and role changes. USB2 device serial works. |
-| Power | Enabling the charger and fuel gauge with the X900 battery data (audited in [power](../device-facts/gts8uwifi/power.md), not enabled), idle consumption and system suspend/resume. The bootloader's charger state keeps the battery full; SoC thermal zones and both thermistors read. |
+| Power | Enabling the charger after a watched charge from a lower state of charge (see [power](../device-facts/gts8uwifi/power.md)); idle and suspend consumption, where the SoC's sleep counters stay at zero; the 2 s resume; `swclock-offset` in the X900 package. The gauge reads, suspend and resume work, the bootloader's charger state keeps the battery full; SoC thermal zones and both thermistors read. |
 | Storage/system | UFS filesystem operation and an installed rootfs on it; packaging the microSD boot (gadget service, image creation outside Docker); microSD hotplug. UFS enumeration works and a console rootfs boots from microSD. |
-| Audio | A listening check; a topology file, UCM profile and amplifier rule in the X900 package; speaker protection; 4-slot TDM. Speakers and microphones work by measurement. |
+| Audio | Thin speaker sound: speaker protection, tuning and 4-slot TDM; a topology file, UCM profile and amplifier rule in the X900 package. Speakers and microphones work in the Plasma session. |
 | Other hardware | Packaging the sensor stack for X900 (daemon, udev rules, mount matrix, extractor, per-device revision) and a hands-on check of orientation, hall switches and keys; Wi-Fi thermistor conversion; cameras and fingerprint reader. Sensors read through the SLPI on a hand-assembled tree. |
 | Portability | Transfer ABL's live RAM/reservations rather than assuming this DYDC/12 GiB layout for other firmware or capacities. |
 | Submission | Kernel bindings and `dtbs_check`, removal of remaining bring-up workarounds, X800 hardware regression and separate Linux/uniLoader/pmaports submissions. |

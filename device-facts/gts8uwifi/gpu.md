@@ -89,8 +89,9 @@ to 30 ms without. It had no effect on the timeouts.
 
 ## Not done
 
-- A hands-on desktop session on the fixed kernel. The fix was validated
-  with the panel off.
+- More than one hands-on session. The fix was validated with the panel
+  off, and then the owner used the Plasma desktop by touch on `7.2-r83`
+  with runtime PM on auto: no GMU error and the HFI handler never ran.
 - Frequency scaling under load, thermal behaviour and sustained rendering
   beyond the 74 frames per second `kmscube` run.
 - A730 hardware clock gating (upstream 9d7355c6040c) and the other a6xx
