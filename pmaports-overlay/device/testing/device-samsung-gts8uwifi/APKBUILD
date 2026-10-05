@@ -4,7 +4,7 @@ maintainer="Garrett Beasley <garrettbeasley@icloud.com>"
 pkgname=device-samsung-gts8uwifi
 pkgdesc="Samsung Galaxy Tab S8 Ultra (Wi-Fi) - mainline bring-up (SM8450)"
 pkgver=0.1
-pkgrel=7
+pkgrel=8
 url="https://postmarketos.org"
 license="MIT"
 arch="aarch64"
@@ -16,6 +16,8 @@ depends="
 	android-tools
 	mdev-conf
 	linux-firmware-qcom
+	linux-firmware-qca
+	bluez-btmgmt
 	swclock-offset
 	hexagonrpcd>=0.5.0_git20260824
 	hexagonrpcd-udev
@@ -40,6 +42,10 @@ source="
 	81-libssc-samsung-gts8uwifi.rules
 	90-gts8uwifi-hexagonrpcd-sdsp.rules
 	hexagonrpcd-sdsp-sensor-tree.conf
+	bt-addr.sh
+	bt-addr.conf
+	bt-addr.service
+	90-gts8uwifi-bt-addr.rules
 "
 
 build() {
@@ -92,6 +98,16 @@ package() {
 	# the version floor keeps Alpine's 0.4.0 from satisfying it.
 	install -Dm644 "$srcdir"/81-libssc-samsung-gts8uwifi.rules \
 		"$pkgdir"/usr/lib/udev/rules.d/81-libssc-samsung-gts8uwifi.rules
+
+	# Bluetooth: the controller comes up unconfigured (no local-bd-address
+	# from DT or bootloader). This hands hci0 an address with btmgmt; the
+	# udev rule and unit that trigger it are in the systemd subpackage.
+	# linux-firmware-qca has the controller's firmware. See the script
+	# header for where the address comes from.
+	install -Dm755 "$srcdir"/bt-addr.sh \
+		"$pkgdir"/usr/bin/gts8uwifi-bt-addr
+	install -Dm644 "$srcdir"/bt-addr.conf \
+		"$pkgdir"/etc/conf.d/gts8uwifi-bt-addr
 }
 
 systemd() {
@@ -122,6 +138,13 @@ systemd() {
 		"$subpkgdir"/usr/lib/udev/rules.d/90-gts8uwifi-hexagonrpcd-sdsp.rules
 	install -Dm644 "$srcdir"/hexagonrpcd-sdsp-sensor-tree.conf \
 		"$subpkgdir"/usr/lib/systemd/system/hexagonrpcd-sdsp.service.d/10-gts8uwifi-sensor-tree.conf
+
+	# Bluetooth public address: udev pulls the oneshot in when hci0 appears
+	# (ENV{SYSTEMD_WANTS}), so the unit has no [Install] section.
+	install -Dm644 "$srcdir"/bt-addr.service \
+		"$subpkgdir"/usr/lib/systemd/system/gts8uwifi-bt-addr.service
+	install -Dm644 "$srcdir"/90-gts8uwifi-bt-addr.rules \
+		"$subpkgdir"/usr/lib/udev/rules.d/90-gts8uwifi-bt-addr.rules
 }
 sha512sums="
 7f6218a6e7d200604dc239c5602dc367fd1cdf8b8c171b5305d18f3c8265f72c4fcd1065369f55ba15b4e5a8e998be4085a7229a85a6763b646e7564504e0758  deviceinfo
@@ -137,4 +160,8 @@ ef4d5f06765c081978fad1d0021051ed1e25b8e59c825ce01a931a0bd75675391b345cb6cfa3e9f9
 b9f0d46c2da85c5777664faa7aa14c4bbe03cf63213a601b8ce43f988ab3b921072202e27886422b619602eeca26a38cacf97c43f11de872d3b76bde52a8e45f  81-libssc-samsung-gts8uwifi.rules
 2b692d908a426a14a675d40a26b9bba887e5a9313c535aa75d4e718ffe961e8d0bf28558b39656d876511d139013a6fb6429164555388bceb5981f7fe105d1e9  90-gts8uwifi-hexagonrpcd-sdsp.rules
 8cb5be0bf7c385193da98150ec0f3e01b33ced5b9d36dae4ff4206d6d08e900b6f230165c58a8c50220d804ac8f350138d09a8d088016b091adac86ef6851b7d  hexagonrpcd-sdsp-sensor-tree.conf
+89d1256ef9320fceff0ab063278c176b9680264d9ed425941c45d8d8a5b880e0a47e895e8694630e4bf4deb7b965ca37de42076feb98663acff3886177fc8549  bt-addr.sh
+8b1400fc00e4e721e3d4f277934626bf2d6098ff7e7da190c97c33c8c7dbb84a20807a7d1858144f09f7678515b9b013a4d0a21433ea0562f6217bf1201122ca  bt-addr.conf
+06e01c42eec2a5ae0c3834ab6cefde663322d3d6328ea45a4f627806f41704274d6982fe12a19553fa4fc8d9a7c25599aa30a9754ecad4b5e87201b10b928164  bt-addr.service
+1b694c81a52030b15b08a88bc485dce2dcaf40f5dc8da5b45be7715adcf5c33b9647a1cbd268acb280d30ac958589858ecfca65a275c9e442b8a4faa7afc787a  90-gts8uwifi-bt-addr.rules
 "
