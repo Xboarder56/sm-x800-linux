@@ -31,10 +31,32 @@ image stores them compressed: the builder's kernel refuses to read them, and
 `dump.f2fs` 1.16 writes files of the right size that begin with zeros. Two
 tests run with such files (the stock board file alone, then the whole set)
 failed with `MHI_CB_EE_RDDM` and `failed to power up mhi: -110`; they say
-nothing about the real files. Whether the genuine `bdwlan.elf` works with
-upstream firmware has not been tried, and the X800 note that it crashes
-there may have the same cause. The files were finally copied by loop-mounting
+nothing about the real files. The files were finally copied by loop-mounting
 the image on the tablet itself.
+
+The genuine board file does not work with upstream firmware either. With
+linux-firmware's `amss.bin`, `m3.bin` and `regdb.bin` (WLAN.HSP.1.1-03125),
+`board-2.bin` moved aside and the stock `bdwlan.elf` (a valid ELF, SHA-256
+`c5d04d22c98a...`) as `board.bin`, the firmware crashes while the board file
+is downloaded:
+
+    firmware crashed: MHI_CB_EE_RDDM
+    failed to wait board file download request: -110
+    qmi failed to load bdf file
+
+So a board file alone cannot be upstreamed to make linux-firmware work
+here; the board data belongs to the WLAN.HSP.2.0 firmware branch stock
+uses. Putting the complete stock set back restored the 6 GHz link at once.
+
+## Where stock gets the addresses
+
+Neither radio has an address of its own, and the bootloader does not pass
+one. Stock reads both from the `efs` partition: `init.qcom.rc` sets
+`ro.bt.bdaddr_path` to `/mnt/vendor/efs/bluetooth/bt_addr`, which the
+Bluetooth HAL reads, and `macloader` and Samsung's Wi-Fi HAL read
+`/mnt/vendor/efs/wifi/.mac.info`. Found in the firmware package's vendor
+image; the tablet's own `efs` has not been read. Under Linux `wlan0` gets a
+random locally administered address on each boot and `hci0` has none.
 
 ## Rails
 
@@ -51,6 +73,7 @@ has only been run with both in place.
 - Bluetooth: `hci0` loads its firmware but has no address, as on the X800
   before its address helper. Stock ships `hpnv21.bin` and `hpnv21g.bin`,
   which were copied out but not tried.
+- A stable Wi-Fi address; see the section above.
 - Throughput against a local server, roaming, 5 GHz association, suspend.
 - The X900 package does not carry or fetch the stock Wi-Fi files.
 - The default regulatory domain leaves all 28 5 GHz channels listen-only.
