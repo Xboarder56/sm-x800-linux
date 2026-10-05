@@ -4,7 +4,7 @@ maintainer="Garrett Beasley <garrettbeasley@icloud.com>"
 pkgname=device-samsung-gts8uwifi
 pkgdesc="Samsung Galaxy Tab S8 Ultra (Wi-Fi) - mainline bring-up (SM8450)"
 pkgver=0.1
-pkgrel=4
+pkgrel=5
 url="https://postmarketos.org"
 license="MIT"
 arch="aarch64"
@@ -19,6 +19,7 @@ depends="
 	make-dynpart-mappings
 	device-mapper
 "
+subpackages="$pkgname-systemd"
 makedepends="devicepkg-dev"
 source="
 	deviceinfo
@@ -28,6 +29,9 @@ source="
 	ucm2/Samsung-Galaxy-Tab-S8-Ultra.conf
 	ucm2/HiFi.conf
 	Samsung-Galaxy-Tab-S8-Ultra-tplg.bin
+	usb-gadget.sh
+	usb-gadget.service
+	80-gts8uwifi.preset
 "
 
 build() {
@@ -68,6 +72,29 @@ package() {
 	# amplifiers to the same line.
 	install -Dm644 "$srcdir"/Samsung-Galaxy-Tab-S8-Ultra-tplg.bin \
 		"$pkgdir"/usr/lib/firmware/qcom/sm8450/Samsung-Galaxy-Tab-S8-Ultra-tplg.bin
+
+	# The tablet as a USB device to a PC: NCM ethernet and ACM serial on
+	# one configfs gadget. The unit is in -systemd.
+	install -Dm755 "$srcdir"/usb-gadget.sh \
+		"$pkgdir"/usr/bin/gts8uwifi-usb-gadget
+}
+
+systemd() {
+	install_if="$pkgname=$pkgver-r$pkgrel systemd"
+	depends="unudhcpd-systemd"
+
+	# USB gadget: built when the UDC appears (usb-gadget.target), with
+	# unudhcpd@usb0 and a serial getty on ttyGS0 pulled in by the unit.
+	install -Dm644 "$srcdir"/usb-gadget.service \
+		"$subpkgdir"/usr/lib/systemd/system/gts8uwifi-usb-gadget.service
+	install -d "$subpkgdir"/usr/lib/systemd/system/usb-gadget.target.wants
+	ln -sf ../gts8uwifi-usb-gadget.service \
+		"$subpkgdir"/usr/lib/systemd/system/usb-gadget.target.wants/gts8uwifi-usb-gadget.service
+
+	# Vendor wants symlinks read "disabled" from is-enabled; the preset
+	# makes the state read what it is.
+	install -Dm644 "$srcdir"/80-gts8uwifi.preset \
+		"$subpkgdir"/usr/lib/systemd/system-preset/80-gts8uwifi.preset
 }
 sha512sums="
 7f6218a6e7d200604dc239c5602dc367fd1cdf8b8c171b5305d18f3c8265f72c4fcd1065369f55ba15b4e5a8e998be4085a7229a85a6763b646e7564504e0758  deviceinfo
@@ -77,4 +104,7 @@ sha512sums="
 fb4e1817acb88db675c298aa730826ac88068a5b47c70ee3d14af95a38905f73c39696ed2c6d2dd2035b4c8541edc9b27080e56acb345285e3b5656b23b5c285  Samsung-Galaxy-Tab-S8-Ultra.conf
 1cce95fd5af7e87138ca183cf42d24cc700b48dea09e04f7beb8adaeda0c6fd3def58501603fdf337960d39234f7cc7ecdd4df81903310e3b38a4ee06918aa39  HiFi.conf
 697f6e0b288a485792cdcb40f0ebff33fe405758d83310988c5dc0e3f07d01bb468e0e91936ea06fb42783e94b299500dac1fd8ce05200d650c341b2f77278ed  Samsung-Galaxy-Tab-S8-Ultra-tplg.bin
+0f23e1c5705e2678383fc9f3b745ac369b34f91573096cc57b7afe25db19e09be8eeff7a254229bdbfe957b4b60418b756571ecddd82e4e42e6bb3fc46fb09af  usb-gadget.sh
+ea54f07a6b4c4a32b8fe6a3f10ee44d9da6a02719e0fc29c0a49ba8e9db7410ac6eb48460a45f9cb953f5902aec9056c7cc938eeb3a613055c3e7a40924e220f  usb-gadget.service
+ef4d5f06765c081978fad1d0021051ed1e25b8e59c825ce01a931a0bd75675391b345cb6cfa3e9f955fd7d19f181c030a9cfa646e4a7b8d2dcea6b6cba05d0c1  80-gts8uwifi.preset
 "

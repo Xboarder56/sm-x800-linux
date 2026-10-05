@@ -1,0 +1,22 @@
+[Unit]
+Description=USB gadget: NCM ethernet and ACM serial to a PC (gts8uwifi)
+Documentation=file:///usr/bin/gts8uwifi-usb-gadget
+ConditionPathExistsGlob=/sys/class/udc/*
+Requires=sys-kernel-config.mount
+After=sys-kernel-config.mount
+Wants=unudhcpd@usb0.service serial-getty@ttyGS0.service
+Before=unudhcpd@usb0.service serial-getty@ttyGS0.service
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=/usr/bin/gts8uwifi-usb-gadget start
+# a new gadget is a new usb0: the DHCP server must bind to it
+ExecStartPost=-/usr/bin/systemctl --no-block try-restart unudhcpd@usb0.service
+# and a new ttyGS0: a getty that was running on the old one stopped with it
+# and Wants= does not start a unit that was active when this job was queued
+ExecStartPost=-/usr/bin/systemctl --no-block start serial-getty@ttyGS0.service
+ExecStop=/usr/bin/gts8uwifi-usb-gadget stop
+
+[Install]
+WantedBy=usb-gadget.target

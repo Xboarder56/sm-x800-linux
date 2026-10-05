@@ -1,0 +1,4 @@
+# The -systemd subpackage ships its wants symlinks under /usr/lib; without
+# this line systemctl is-enabled reports the unit disabled although it
+# starts (issue #41 on the Tab S8+ package).
+enable gts8uwifi-usb-gadget.service
