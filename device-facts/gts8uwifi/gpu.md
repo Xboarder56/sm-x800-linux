@@ -61,7 +61,8 @@ stays dark, a terminal repainting at uneven intervals:
 specific to this tablet.
 
 What did not fix it, each tried on the way: stable commit 51fcee9d4140
-(RPMh stop sequence, kept as a backport), dropping `clk_ignore_unused
+(RPMh stop sequence, carried as a backport until the package moved to
+7.2.8, which has it), dropping `clk_ignore_unused
 pd_ignore_unused`, running `hw_init` on the timestamp path, linux-next
 128a0edde507 (secondary ARC vote), and describing the GPU's memory path.
 Keeping the GPU out of runtime suspend, a long autosuspend delay or a CPU

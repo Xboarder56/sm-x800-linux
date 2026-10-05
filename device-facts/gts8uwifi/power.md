@@ -105,11 +105,21 @@ The RTC is read only and reads 1974 on this tablet. With its driver built
 in and `swclock-offset` installed by hand, the clock was correct after a
 clean reboot without network.
 
+## Charger and dual-role port, enabled
+
+Kernel `7.2-r89` enables the charger and the dual-role Type-C port as on
+the X800, with the owner's go-ahead. Plugged into a PD hub the port
+reports sink and device, negotiates 9 V 3 A, and the charger sets a
+1.65 A input limit (15 W). The role switch reads device, the gadget and
+serial login work, and the OTG regulator is off. At 98 to 99 % the
+charger reports `Full` at its 4.30 V limit and the battery carries part
+of the load as it settles (0.5 to 0.8 A out, 26.0 °C). Host mode, VBUS
+out and a charge from a lower state of charge have not been exercised.
+
 ## Open
 
-- Enabling the charger hands input and charge current control to the
-  mainline driver. The probe has been watched once at full charge (above);
-  a charge from a lower state of charge has not.
+- A charge from a lower state of charge through to termination has not
+  been watched; neither has host mode with an accessory.
 - Stock steps the float voltage down with age and by temperature; mainline
   does neither, which is why the limits stay below stock's.
 - `swclock-offset` is not yet a dependency of the X900 device package.

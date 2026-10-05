@@ -318,6 +318,20 @@ Mac got an address on the NCM interface and could ping and ssh to the
 tablet on one boot and saw no interface on the next two; ssh over Wi-Fi
 is the working file path.
 
+Kernel packages `7.2-r87` to `7.2-r90` and then `7.2.8-r0` add: the rear
+flash LED; CPU capacities, without which the scheduler treated the three
+core types as equals (a busy task now stays on the fastest core); the
+mainline charger and a dual-role USB-C port, which negotiates 9 V from a
+PD hub; and the X900's four cameras, two of which differ from the X800
+(the front sensor's address, and a second front camera). All four sensors
+identify and stream at 30 frames per second, but every captured byte is
+zero, which is open. The move to 7.2.8 needed one fix of its own: 7.2.6
+changed the PCIe `iommu-map` layout in the SoC file without the Qualcomm
+PCIe driver following, which left the Wi-Fi chip unable to load its
+firmware; the package patches the driver to read both layouts. A bus by
+bus comparison with the stock tree is in
+[buses](../device-facts/gts8uwifi/buses.md).
+
 Notes from the desktop work: a DRM client closing the last open file on the
 device, render node included, restores the fbdev console and wakes a blanked
 panel. `pmbootstrap install` normally copies the apk signing keys into the
@@ -420,11 +434,11 @@ deferred.
 | Input | GT6936 pen/palm events, more than two contacts, suspend/resume and firmware update; a keyboard cover and the hall switches changing state. Touch, the S Pen and all three keys work under Plasma. |
 | Graphics | Sending the GMU timeout fix upstream; a packaged source for the zap shader on X900. Plasma renders on the Adreno 730 and the owner's session on `7.2-r83` had no GMU error. |
 | Wireless | Running the extractor's default mode against the tablet's own partitions; throughput; Bluetooth pairing and audio. Wi-Fi works on 6 GHz with the stock set, which the extractor stages; Bluetooth has its factory address and scans. |
-| USB | Host mode, VBUS out, PD above 5 V and role changes, all of which need the charger driver; SuperSpeed; why macOS only sometimes brings the NCM interface up; MTP. USB2 device serial works from the packaged gadget. |
-| Power | Enabling the charger after a watched charge from a lower state of charge (see [power](../device-facts/gts8uwifi/power.md)); idle and suspend consumption, where the SoC's sleep counters stay at zero; the 2 s resume; `swclock-offset` in the X900 package. The gauge reads, suspend and resume work, the bootloader's charger state keeps the battery full; SoC thermal zones and both thermistors read. |
+| USB | Host mode and VBUS out with an accessory, and role changes (the port is dual role and negotiates 9 V as a sink, nothing has been plugged in as a device yet); SuperSpeed and video out, which need the redriver and alt-mode support; why macOS only sometimes brings the NCM interface up; MTP. USB2 device serial works from the packaged gadget. |
+| Power | A watched charge from a lower state of charge (see [power](../device-facts/gts8uwifi/power.md)); the direct charger for more than 15 W; idle and suspend consumption, where the SoC's sleep counters stay at zero; the 2 s resume. The mainline charger and gauge run, suspend and resume work; SoC thermal zones and both thermistors read. |
 | Storage/system | UFS filesystem operation and an installed rootfs on it; an image built from the packages alone, checked against the hand-grown card; image creation outside Docker; microSD hotplug; the Tab S8+ package's lid and console-blank policy, login banner, setup command and tools metapackage. UFS enumeration works and Plasma runs from microSD. |
 | Audio | Thin speaker sound: speaker protection, tuning and 4-slot TDM; a topology file, UCM profile and amplifier rule in the X900 package. Speakers and microphones work in the Plasma session. |
-| Other hardware | The sensor daemon's revision answer (4, this tablet is 5) and the registry from `persist`; the keyboard cover and hall switches doing something; the rear flash LED, disabled in the tree; Wi-Fi thermistor conversion; cameras and fingerprint reader. Sensors read through the SLPI with the packaged rules and a tree the extractor builds. |
+| Other hardware | Camera frames that hold no pixel data, and faster sensor modes than 30 frames per second; the sensor daemon's revision answer (4, this tablet is 5) and the registry from `persist`; the keyboard cover and the lid policy, assumed to match the X800 and untested for want of a cover; a look at the flash LED; the display boost, which only the bootloader programs; Wi-Fi thermistor conversion; gyroscope and auto-brightness. No path is known for the fingerprint reader. Sensors read through the SLPI with the packaged rules and a tree the extractor builds. |
 | Portability | Transfer ABL's live RAM/reservations rather than assuming this DYDC/12 GiB layout for other firmware or capacities. |
 | Submission | Kernel bindings and `dtbs_check`, removal of remaining bring-up workarounds, X800 hardware regression and separate Linux/uniLoader/pmaports submissions. |
 
