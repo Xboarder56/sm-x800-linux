@@ -310,13 +310,20 @@
 	 * against stock's 4.38 V and 3.15 A) until a thermal guard exists.
 	 * Design capacity is the gauge model's DesignCap (3520 x 2.5 mAh);
 	 * the label rates 9800 mAh. The minimum is the gauge's V_empty.
+	 *
+	 * The figures above are the X800's. On the X900 stock floats at
+	 * 4.42 V and allows 3.15 A, so the inherited 4.38 V, 4.30 V and
+	 * 2.0 A all sit below stock and are kept. The capacity is this
+	 * tablet's: its gauge reads DesignCap 3903 (x 2.5 mAh = 9757.5 mAh),
+	 * the same as stock's battery0,capacity; stock's
+	 * battery,battery_full_capacity is 10880 mAh.
 	 */
 	battery: battery {
 		compatible = "simple-battery";
 		voltage-max-design-microvolt = <4380000>;
 		constant-charge-voltage-max-microvolt = <4300000>;
 		constant-charge-current-max-microamp = <2000000>;
-		charge-full-design-microamp-hours = <8800000>;
+		charge-full-design-microamp-hours = <9757500>;
 		voltage-min-design-microvolt = <3350000>;
 	};
 
