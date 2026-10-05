@@ -1,11 +1,14 @@
 #!/bin/sh
 # camtest.sh — stream raw frames from one camera through CAMSS on the tablet.
 #
-# Usage: sh camtest.sh [uw|front|frontfull|rear] [COUNT] [OUT]
+# Usage: sh camtest.sh [uw|front|frontfull|rear|frontuw|frontuwfull] [COUNT] [OUT]
 #   uw         rear ultrawide Hi847 on CSIPHY2, 3264x2448 (csid0 -> vfe0)
 #   front      front Hi1337 on CSIPHY4, 2032x1524 binned (csid1 -> vfe1)
 #   frontfull  front Hi1337 on CSIPHY4, 4000x3000 (csid1 -> vfe1)
 #   rear       rear main Hi1337 on CSIPHY1, 4128x3096 (csid2 -> vfe2)
+#   frontuw    X900 only: front ultrawide Hi1337 on CSIPHY5, 2032x1524 binned
+#              (csid3 -> vfe3)
+#   frontuwfull  X900 only: the same sensor at 4000x3000
 #   COUNT      frames to capture (default 5)
 #   OUT        output file (default /home/user/cam-$CAM.raw)
 #
@@ -20,12 +23,14 @@ CAM=${1:-uw}; COUNT=${2:-5}
 M="media-ctl -d /dev/media0"
 # find_sensor NAME PHY: the sensor entity of that driver linked to that CSIPHY
 # (two Hi1337 modules share the driver; the link tells them apart).
-find_sensor() { $M -p | awk -v n="$1" -v phy="$2" '/^- entity/ { e = ($0 ~ "entity [0-9]+: " n " [0-9]+-0021") ? $0 : "" } e != "" && $0 ~ "\"" phy "\"" { sub(/^- entity [0-9]+: /, "", e); sub(/ \(.*/, "", e); print e; exit }'; }
+find_sensor() { $M -p | awk -v n="$1" -v phy="$2" '/^- entity/ { e = ($0 ~ "entity [0-9]+: " n " [0-9]+-002[01]") ? $0 : "" } e != "" && $0 ~ "\"" phy "\"" { sub(/^- entity [0-9]+: /, "", e); sub(/ \(.*/, "", e); print e; exit }'; }
 case "$CAM" in
 uw)        PHY=msm_csiphy2; W=3264; H=2448; DEF=0; SENSOR=$(find_sensor hi847 $PHY) ;;
 front)     PHY=msm_csiphy4; W=2032; H=1524; DEF=1; SENSOR=$(find_sensor hi1337 $PHY) ;;
 frontfull) PHY=msm_csiphy4; W=4000; H=3000; DEF=1; SENSOR=$(find_sensor hi1337 $PHY) ;;
 rear)      PHY=msm_csiphy1; W=4128; H=3096; DEF=2; SENSOR=$(find_sensor hi1337 $PHY) ;;
+frontuw)   PHY=msm_csiphy5; W=2032; H=1524; DEF=3; SENSOR=$(find_sensor hi1337 $PHY) ;;
+frontuwfull) PHY=msm_csiphy5; W=4000; H=3000; DEF=3; SENSOR=$(find_sensor hi1337 $PHY) ;;
 *)   echo "unknown camera $CAM"; exit 1 ;;
 esac
 FMT=SGRBG10_1X10; PIX=pgAA
