@@ -94,15 +94,51 @@ so a patch added both to the 680 (kept in
 byte of every frame is still zero. So the gap is not the bus client's
 clock gate or mode. The patch is not committed.
 
-That leaves the step before the write master: the CSID RDI output is
-timed correctly (it drives buf-done) but its pixel stream is not reaching
-write-master 24, or a VFE-top input/module config that connects them is
-missing. The next leads, in order: the CSID680 RDI output / DT_ID routing
-versus `camss-csid-gen2.c`; any VFE-top CGC or input-mux the 480 enable
-path has and the 680 lacks; then a kernel-side dump of the WM
-`ADDR_STATUS`/beat counters during a stream (needs care — idle VFE
-register reads reset the SoC). An X800 capture on the current kernel
-would also say whether this is X900-specific or the shared 680 state.
+### The write master is starved, 2026-10-05 (downstream compared)
 
-Not tried: the X800 comparison; a kernel-side dump of the buffer mapping
-and contents; the vfe_lite path by itself; libcamera.
+The SM8450 downstream camera driver (LineageOS `camera-kernel`,
+`cam_vfe680.h` + `cam_vfe_bus_ver3.c`, kept in `root-build/camera-leads/`)
+gives the authoritative write-master programming for this exact bus
+(RDI0 = client 24 at `0x2600`, bus base `0xc00`, CGC at `0xc08`). Against
+it the mainline `vfe_wm_start` is wrong in three places: it leaves the
+packer format at 0 (`PLAIN_128`) while the data is MIPI RAW10 (should be
+`MIPI10`, enum 12); it packs `(height<<16)|(stride>>4)` into `image_cfg_0`
+where the downstream uses the RDI default width `0xffff` with height 0;
+and it never writes the bus CGC override. (The gen3 `addr >> 8` and the
+`MODE` bit are a *different* bus generation — the downstream writes the
+full byte address and `en_cfg = 0x1` for RDI, matching the original 680.)
+
+Each was tried on the tablet (patches in `root-build/camera-leads/`, none
+committed):
+
+| Write-master config | Result |
+|---|---|
+| mainline as-is (packer `PLAIN_128`) | 30 fps, buffers dequeue, every byte 0xAA (prefill) untouched |
+| + CGC override + `MODE` bit (480 style) | same: completes, nothing written |
+| full gen3 port (`addr>>8`, defaults) | same: completes, nothing written |
+| packer `MIPI10` (+ CGC), any `image_cfg_0` | **stream stalls**: `STREAMON`/`QBUF` succeed, no buffer ever dequeues, no dmesg error |
+
+That last line is the decisive one. With the packer at `PLAIN_128` the
+write master "completes" each frame instantly and empty; with the packer
+set to the real `MIPI10` it waits forever and nothing completes. Both mean
+the same thing: **no pixel beats are arriving at write-master 24.** The
+master is correctly addressed and enabled but starved — the CSID's RDI
+pixel stream never reaches the IFE bus. The CSID's buf-done is a frame-timing
+counter, not proof of a write.
+
+So the gap is not in the write-master registers at all (every value was
+tried). It is the IFE **top/core** datapath that the mainline `vfe-680`
+driver does not implement: it writes only IRQ masks and the bus client,
+and nothing to the VFE top (`core_cfg_0..6`, `core_cgc_ovd_0/1` at
+`0x18/0x1c`, `ahb_cgc_ovd` at `0x20`, the module-enable and the CSID→IFE
+input mux that the downstream `cam_vfe_top_ver4` programs on stream-on).
+Bringing RDI capture up on this SoC needs that top-level datapath ported,
+which is a substantial driver effort, not a register tweak.
+
+Next session, with the above established: port the VFE680 top enable from
+`cam_vfe_top_ver4.c` (core CGC overrides, `core_cfg`, module/RDI enable)
+and re-test with the packer set to `MIPI10`; a kernel-side dump of the WM
+`ADDR_STATUS`/beat counter during a stream would confirm when beats start.
+
+Not tried: the VFE-top datapath port (the main remaining work); the
+vfe_lite path by itself; libcamera. No X800 is available to compare.
