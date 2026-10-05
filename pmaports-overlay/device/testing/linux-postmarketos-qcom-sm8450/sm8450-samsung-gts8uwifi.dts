@@ -1439,11 +1439,13 @@
 /*
  * USB — dual role, USB 2.0 only, roles switched by the MAX77705 CCIC.
  *
- * X900 first boot currently uses fixed peripheral mode. The MAX77705
- * driver routes D+/D- to USB: DYDC leaves CTRL1 at 0x3f (open) after
+ * The X900's first boots used fixed peripheral mode, with sink/device-only
+ * overrides that kept the charger and gauge disabled while their
+ * Ultra-specific data was validated; those are gone and the port is dual
+ * role as on the X800. Still true from that time: the MAX77705 driver
+ * routes D+/D- to USB, because DYDC leaves CTRL1 at 0x3f (open) after
  * Download Mode, and COM_USB=0x09 restores gadget attachment without a
- * cable replug. The sink/device-only overrides below keep the charger
- * and gauge disabled while their Ultra-specific data is validated.
+ * cable replug.
  *
  * v7.2's sm8450.dtsi uses the FLATTENED dwc3 binding: the single node usb_1
  * (usb@a600000, "qcom,sm8450-dwc3" + "qcom,snps-dwc3") carries both the
@@ -1490,8 +1492,7 @@
  * because usb_1_qmpphy is disabled and we no longer list it in phys.
  */
 &usb_1 {
-	dr_mode = "peripheral";
-	/delete-property/ usb-role-switch;
+	dr_mode = "otg";
 	maximum-speed = "high-speed";
 
 	/* USB 2.0 only — do not reference the disabled SuperSpeed phy. */
@@ -2414,44 +2415,16 @@
 };
 
 /*
- * Initial debug boot: MAX77705 MFD + Type-C data routing, USB2 sink/device
- * mode only. No charger reference keeps the Type-C driver's PD requests at
- * 5 V; no VBUS regulator reference can enable the OTG boost. Charger and
- * gauge setup remain disabled until their X900 battery data is validated.
- *
- * The gauge is now enabled for reading only. It keeps stock's model (no
- * power-on-reset flag after a reboot from Android), so max17042 loads
- * nothing and only moves the SOC alert thresholds. Its reference to the
- * disabled charger is dropped so that it can probe. The charger stays
- * disabled: charging is whatever the bootloader programmed.
+ * The first X900 debug boots ran the MAX77705 as a device-only 5 V sink:
+ * charger and gauge disabled, no charger reference on the Type-C node (which
+ * keeps PD at 5 V), no VBUS regulator (so the OTG boost could not be
+ * reached) and the role switch cut. The gauge came back first, read only.
+ * With the owner's go-ahead the rest now runs as described above, as on the
+ * X800: the mainline charger at the battery node's limits (4.30 V, 2.0 A,
+ * below stock's 4.42 V and 3.15 A), a dual-role port, and PD up to 9 V.
+ * The charger was first tried on its own at full charge; see
+ * device-facts/gts8uwifi/power.md.
  */
-&i2c5 {
-	status = "okay";
-
-	pmic@66 { status = "okay"; };
-	charger@69 { status = "disabled"; };
-
-	typec@25 {
-		status = "okay";
-		/delete-property/ vbus-supply;
-		/delete-property/ maxim,charger;
-
-		connector {
-			power-role = "sink";
-			data-role = "device";
-			/delete-property/ try-power-role;
-			/* Retain the validated stock 5 V capability word (0x3601912c). */
-			sink-pdos = <PDO_FIXED(5000, 3000, PDO_FIXED_DUAL_ROLE |
-						PDO_FIXED_HIGHER_CAP |
-						PDO_FIXED_USB_COMM |
-						PDO_FIXED_DATA_SWAP)>;
-		};
-	};
-
-	fuel-gauge@36 { /delete-property/ power-supplies; };
-};
-&usb_1_dwc3_hs { /delete-property/ remote-endpoint; };
-&max77705_typec_hs { /delete-property/ remote-endpoint; };
 
 /*
  * DYDC stock /reserved-memory/xbl_ramdump_region@80640000 is relocated:
