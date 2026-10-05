@@ -2369,6 +2369,12 @@
  * mode only. No charger reference keeps the Type-C driver's PD requests at
  * 5 V; no VBUS regulator reference can enable the OTG boost. Charger and
  * gauge setup remain disabled until their X900 battery data is validated.
+ *
+ * The gauge is now enabled for reading only. It keeps stock's model (no
+ * power-on-reset flag after a reboot from Android), so max17042 loads
+ * nothing and only moves the SOC alert thresholds. Its reference to the
+ * disabled charger is dropped so that it can probe. The charger stays
+ * disabled: charging is whatever the bootloader programmed.
  */
 &i2c5 {
 	status = "okay";
@@ -2393,7 +2399,7 @@
 		};
 	};
 
-	fuel-gauge@36 { status = "disabled"; };
+	fuel-gauge@36 { /delete-property/ power-supplies; };
 };
 &usb_1_dwc3_hs { /delete-property/ remote-endpoint; };
 &max77705_typec_hs { /delete-property/ remote-endpoint; };
