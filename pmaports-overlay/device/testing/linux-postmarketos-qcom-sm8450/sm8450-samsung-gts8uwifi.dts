@@ -2079,6 +2079,15 @@
 	mode-download = <0x15>;
 };
 
+/*
+ * PMK8350 real-time clock. Read only: the driver cannot set this RTC
+ * without a place to keep an offset, and none is given, so Android's
+ * time base is left alone. The alarm gives system suspend a timed wake.
+ */
+&pmk8350_rtc {
+	status = "okay";
+};
+
 &pon_pwrkey {
 	status = "okay";
 };
