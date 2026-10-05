@@ -2109,6 +2109,55 @@
 };
 
 /*
+ * CPU capacities. sm8450.dtsi describes the eight cores without
+ * capacity-dmips-mhz, so the scheduler takes them for equals (cpu_capacity
+ * 1024 on all) and places a busy task on a Cortex-A510 as readily as on
+ * the Cortex-X2. Measured on this tablet at each cluster's top frequency, a
+ * single-threaded loop takes 1.18 s on cpu0, 0.28 s on cpu4 and 0.20 s on
+ * cpu7. The values are stock's (rev-5 tree), which also give the energy
+ * model its coefficients.
+ */
+&cpu0 {
+	capacity-dmips-mhz = <1024>;
+	dynamic-power-coefficient = <100>;
+};
+
+&cpu1 {
+	capacity-dmips-mhz = <1024>;
+	dynamic-power-coefficient = <100>;
+};
+
+&cpu2 {
+	capacity-dmips-mhz = <1024>;
+	dynamic-power-coefficient = <100>;
+};
+
+&cpu3 {
+	capacity-dmips-mhz = <1024>;
+	dynamic-power-coefficient = <100>;
+};
+
+&cpu4 {
+	capacity-dmips-mhz = <2253>;
+	dynamic-power-coefficient = <259>;
+};
+
+&cpu5 {
+	capacity-dmips-mhz = <2253>;
+	dynamic-power-coefficient = <259>;
+};
+
+&cpu6 {
+	capacity-dmips-mhz = <2253>;
+	dynamic-power-coefficient = <259>;
+};
+
+&cpu7 {
+	capacity-dmips-mhz = <2386>;
+	dynamic-power-coefficient = <450>;
+};
+
+/*
  * GPU: Adreno 730. sm8450.dtsi carries the full gpu/gmu/smmu description;
  * per-board all that's needed is the zap shader. Samsung ships NO zap in
  * vendor/ — the signed image lives in the apnhlos partition as split
