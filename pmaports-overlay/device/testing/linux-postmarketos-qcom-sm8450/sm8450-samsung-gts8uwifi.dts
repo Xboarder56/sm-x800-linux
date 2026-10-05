@@ -37,8 +37,21 @@
 #include "sm8450.dtsi"
 #include "pm8350.dtsi"
 #include "pm8350c.dtsi"
+/*
+ * pm8450 (USID 7) and pmr735a (USID 4) are on the SPMI bus in the rev-5
+ * stock tree with their temperature alarms and GPIO blocks enabled. Their
+ * regulators are RPMh-controlled below; the SPMI nodes add each chip's die
+ * temperature and its over-temperature trips.
+ *
+ * Not included: pmr735b (USID 5), which stock also describes. Its revision
+ * registers cannot be read from Linux ("transaction failed (0x3) reg:
+ * 0x2028" for 0x5 0x104), so the pmic-spmi probe fails with -EIO and
+ * nothing under it binds. pm8350b (USID 3) is disabled in stock.
+ */
+#include "pm8450.dtsi"
 /* pmk8350 carries the power key + resin (volume down) — see &pon_* below */
 #include "pmk8350.dtsi"
+#include "pmr735a.dtsi"
 
 / {
 	model = "Samsung Galaxy Tab S8 Ultra (Wi-Fi)";
